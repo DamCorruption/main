@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Training History Visualization</title>
+    <style>
+        body { font-family: sans-serif; }
+        .chart-container {
+            width: 90%;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            overflow-x: auto; /* Enable horizontal scrolling */
+        }
+        svg {
+            display: block;
+            height: 300px; /* Fixed height */
+            min-width: 600px; /* Minimum width for longer data */
+        }
+        .axis {
+            stroke: black;
+            stroke-width: 1;
+        }
+        .line {
+            fill: none;
+            stroke-width: 2;
+        }
+        .training-line { stroke: blue; }
+        .validation-line { stroke: red; }
+        .label {
+            font-size: 10px;
+        }
+        #history-input-container {
+            width: 90%;
+            margin: 20px auto;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        #history-input {
+            flex-grow: 1;
+            height: 100px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Training History</h1>
+
+    <div id="history-input-container">
+        <textarea id="history-input" placeholder="Paste your history object here (JSON format)"></textarea>
+        <button id="update-button">Update Charts</button>
+    </div>
+
+    <div id="charts-container">
+        </div>
+
+    <script>
+        let history = {
+            // Initial empty history object
+        };
+
+        const chartsContainer = document.getElementById('charts-container');
+        const historyInput = document.getElementById('history-input');
+        const updateButton = document.getElementById('update-button');
+
+        function drawCharts() {
+            chartsContainer.innerHTML = ''; // Clear existing charts
+            if (Object.keys(history).length === 0) {
+                const message = document.createElement('p');
+                message.textContent = "No history data provided yet. Paste your history object and click 'Update Charts'.";
+                chartsContainer.appendChild(message);
+                return;
+            }
+
+            const epochs = history[Object.keys(history)[0]].length;
+            const epochArray = Array.from(Array(epochs).keys()).map(x => x + 1);
+
+            function createChart(metricName) {
+                const chartContainer = document.createElement('div');
+                chartContainer.className = 'chart-container';
+                const title = document.createElement('h2');
+                title.textContent = metricName;
+                chartContainer.appendChild(title);
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", 'svg');
+                svg.id = `${metricName}Chart`;
+                chartContainer.appendChild(svg);
+                chartsContainer.appendChild(chartContainer);
+
+                const width = epochs * 50 + 2 * 30; // Adjust for data length
+                const height = svg.clientHeight;
+                const padding = 30;
+
+                let maxMetric = -Infinity;
+                let minMetric = Infinity;
+                if (history[metricName]) {
+                    maxMetric = Math.max(...history[metricName]);
+                    minMetric = Math.min(...history[metricName]);
+                }
+                if (history["val_" + metricName]) {
+                    maxMetric = Math.max(maxMetric, ...history["val_" + metricName]);
+                    minMetric = Math.min(minMetric, ...history["val_" + metricName]);
+                }
+                if (maxMetric === -Infinity) {
+                    return;
+                }
+
+                const yScaleDomainPadding = (maxMetric - minMetric) * 0.1; // Add 10% padding
+                maxMetric += yScaleDomainPadding;
+                minMetric -= yScaleDomainPadding;
+
+                const xScale = d => padding + (width - 2 * padding) * ((d) / (epochs - 1));
+                const yScale = d => height - padding - (height - 2 * padding) * ((d - minMetric) / (maxMetric - minMetric));
+
+                //Axes
+                const xAxis = document.createElementNS("http://www.w3.org/2000/svg", 'line');
+                xAxis.setAttribute('x1', padding);
+                xAxis.setAttribute('y1', height - padding);
+                xAxis.setAttribute('x2', width - padding);
+                xAxis.setAttribute('y2', height - padding);
+                xAxis.setAttribute('class', 'axis');
+                svg.appendChild(xAxis);
+
+                const yAxis = document.createElementNS("http://www.w3.org/2000/svg", 'line');
+                yAxis.setAttribute('x1', padding);
+                yAxis.setAttribute('y1', padding);
+                yAxis.setAttribute('x2', padding);
+                yAxis.setAttribute('y2', height - padding);
+                yAxis.setAttribute('class', 'axis');
+                svg.appendChild(yAxis);
+
+                function createLine(data, className) {
+                    if (!data) { return; }
+                    const points = data.map((d, i) => `${xScale(i)} ${yScale(d)}`).join(' ');
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", 'polyline');
+                    line.setAttribute('points', points);
+                    line.setAttribute('class', `line ${className}`);
+                    svg.appendChild(line);
+                }
+
+                createLine(history[metricName], 'training-line');
+                createLine(history["val_" + metricName], 'validation-line');
+
+                // Add labels (very basic example)
+                const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                xLabel.setAttribute("x", width / 2);
+                xLabel.setAttribute("y", height);
+                xLabel.setAttribute("text-anchor", "middle");
+                xLabel.textContent = "Epochs";
+                svg.appendChild(xLabel);
+
+                const yLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                yLabel.setAttribute("x", 10);
+                yLabel.setAttribute("y", height / 2);
+                yLabel.setAttribute("transform", `rotate(-90 ${10} ${height / 2})`);
+                yLabel.textContent = metricName;
+                svg.appendChild(yLabel);
+            }
+
+            for (const metric in history) {
+                if (!metric.startsWith("val_")) {
+                    createChart(metric);
+                }
+            }
+        }
+
+        updateButton.addEventListener('click', () => {
+            try {
+                const pastedHistory = JSON.parse(historyInput.value);
+                history = pastedHistory;
+                drawCharts();
+            } catch (error) {
+                console.error("Error parsing history object:", error);
+                chartsContainer.innerHTML = `<p style="color: red;">Invalid JSON format. Please ensure your history object is correctly formatted.</p>`;
+            }
+        });
+
+        // Draw initial charts (will be empty if history is initially empty)
+        drawCharts();
+    </script>
+
+</body>
+</html>
