@@ -39,6 +39,10 @@
             flex-grow: 1;
             height: 100px;
         }
+        #download-button {
+            margin: 10px auto;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -49,6 +53,8 @@
         <textarea id="history-input" placeholder="Paste your history object here (JSON format)"></textarea>
         <button id="update-button">Update Charts</button>
     </div>
+
+    <button id="download-button">Download Charts as Image</button>
 
     <div id="charts-container">
         </div>
@@ -61,6 +67,7 @@
         const chartsContainer = document.getElementById('charts-container');
         const historyInput = document.getElementById('history-input');
         const updateButton = document.getElementById('update-button');
+        const downloadButton = document.getElementById('download-button');
 
         function drawCharts() {
             chartsContainer.innerHTML = ''; // Clear existing charts
@@ -171,6 +178,62 @@
                 console.error("Error parsing history object:", error);
                 chartsContainer.innerHTML = `<p style="color: red;">Invalid JSON format. Please ensure your history object is correctly formatted.</p>`;
             }
+        });
+
+        downloadButton.addEventListener('click', () => {
+            const svgs = chartsContainer.querySelectorAll('svg');
+            if (svgs.length === 0) {
+                alert("No charts to download.");
+                return;
+            }
+
+            let combinedWidth = 0;
+            let combinedHeight = 0;
+            const svgStrings = [];
+
+            svgs.forEach(svg => {
+                const clonedSvg = svg.cloneNode(true);
+                const bbox = svg.getBoundingClientRect();
+                clonedSvg.setAttribute('width', bbox.width);
+                clonedSvg.setAttribute('height', bbox.height);
+                svgStrings.push(new XMLSerializer().serializeToString(clonedSvg));
+                combinedHeight += bbox.height + 20; // Add some spacing
+                combinedWidth = Math.max(combinedWidth, bbox.width);
+            });
+
+            combinedHeight -= 20; // Remove extra spacing at the end
+
+            const combinedSvg = `
+                <svg width="${combinedWidth}" height="${combinedHeight}" xmlns="http://www.w3.org/2000/svg">
+                    ${svgStrings.map((svgString, index) => {
+                        const yOffset = svgs.slice(0, index).reduce((sum, svg) => sum + svg.getBoundingClientRect().height + 20, 0);
+                        return `<g transform="translate(0, ${yOffset})">${svgString}</g>`;
+                    }).join('')}
+                </svg>
+            `;
+
+            const image = new Image();
+            const svgBlob = new Blob([combinedSvg], { type: 'image/svg+xml;charset=utf-8' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+
+            image.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = combinedWidth;
+                canvas.height = combinedHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(image, 0, 0);
+                const canvasUrl = canvas.toDataURL('image/png');
+
+                const downloadLink = document.createElement('a');
+                downloadLink.href = canvasUrl;
+                downloadLink.download = 'training_history_charts.png';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(canvasUrl);
+            };
+
+            image.src = svgUrl;
         });
 
         // Draw initial charts (will be empty if history is initially empty)
