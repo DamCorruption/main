@@ -5,15 +5,19 @@
     <style>
         body { font-family: sans-serif; }
         .chart-container {
-            width: 90%;
+            width: 95%; /* Allow chart container to take more width */
             margin: 20px auto;
             border: 1px solid #ccc;
             overflow-x: auto; /* Enable horizontal scrolling */
+            position: relative; /* For centering the title */
+        }
+        .chart-container h2 {
+            text-align: center;
         }
         svg {
             display: block;
             height: 300px; /* Fixed height */
-            min-width: 600px; /* Minimum width for longer data */
+            /* min-width: 600px;  Let width be more dynamic */
         }
         .axis {
             stroke: black;
@@ -79,7 +83,7 @@
             }
 
             const epochs = history[Object.keys(history)[0]].length;
-            const epochArray = Array.from(Array(epochs).keys()).map(x => x + 1);
+            const epochArray = Array.from(Array(epochs).keys()); // Start from 0 for index
 
             function createChart(metricName) {
                 const chartContainer = document.createElement('div');
@@ -92,7 +96,11 @@
                 chartContainer.appendChild(svg);
                 chartsContainer.appendChild(chartContainer);
 
-                const width = epochs * 50 + 2 * 30; // Adjust for data length
+                // Dynamic width based on number of epochs and container width
+                const containerWidth = chartContainer.offsetWidth;
+                const width = Math.max(epochs * 20, containerWidth - 60); // Minimum 20px per epoch, adjust as needed
+                svg.style.width = `${width}px`; // Set width on the SVG element
+
                 const height = svg.clientHeight;
                 const padding = 30;
 
@@ -114,7 +122,7 @@
                 maxMetric += yScaleDomainPadding;
                 minMetric -= yScaleDomainPadding;
 
-                const xScale = d => padding + (width - 2 * padding) * ((d) / (epochs - 1));
+                const xScale = d => padding + (width - 2 * padding) * (d / (epochs - 1)); // Use index directly
                 const yScale = d => height - padding - (height - 2 * padding) * ((d - minMetric) / (maxMetric - minMetric));
 
                 //Axes
@@ -123,7 +131,7 @@
                 xAxis.setAttribute('y1', height - padding);
                 xAxis.setAttribute('x2', width - padding);
                 xAxis.setAttribute('y2', height - padding);
-                xAxis.setAttribute('class', 'axis');
+                xAxis.setAttribute('style', 'stroke: black; stroke-width: 1;'); // Inline style
                 svg.appendChild(xAxis);
 
                 const yAxis = document.createElementNS("http://www.w3.org/2000/svg", 'line');
@@ -131,33 +139,78 @@
                 yAxis.setAttribute('y1', padding);
                 yAxis.setAttribute('x2', padding);
                 yAxis.setAttribute('y2', height - padding);
-                yAxis.setAttribute('class', 'axis');
+                yAxis.setAttribute('style', 'stroke: black; stroke-width: 1;'); // Inline style
                 svg.appendChild(yAxis);
 
-                function createLine(data, className) {
+                // X-axis labels
+                epochArray.forEach((epoch, index) => {
+                    const xPos = xScale(index);
+                    const tick = document.createElementNS("http://www.w3.org/2000/svg", 'line');
+                    tick.setAttribute('x1', xPos);
+                    tick.setAttribute('y1', height - padding);
+                    tick.setAttribute('x2', xPos);
+                    tick.setAttribute('y2', height - padding + 5);
+                    tick.setAttribute('style', 'stroke: black; stroke-width: 1;');
+                    svg.appendChild(tick);
+
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", 'text');
+                    text.setAttribute('x', xPos);
+                    text.setAttribute('y', height - padding + 20);
+                    text.setAttribute('text-anchor', 'middle');
+                    text.setAttribute('style', 'font-size: 10px;');
+                    text.textContent = epoch + 1; // Display epoch number
+                    svg.appendChild(text);
+                });
+
+                // Y-axis labels
+                const yTicks = 5;
+                for (let i = 0; i <= yTicks; i++) {
+                    const value = minMetric + (maxMetric - minMetric) * (yTicks - i) / yTicks;
+                    const yPos = yScale(value);
+                    const tick = document.createElementNS("http://www.w3.org/2000/svg", 'line');
+                    tick.setAttribute('x1', padding - 5);
+                    tick.setAttribute('y1', yPos);
+                    tick.setAttribute('x2', padding);
+                    tick.setAttribute('y2', yPos);
+                    tick.setAttribute('style', 'stroke: black; stroke-width: 1;');
+                    svg.appendChild(tick);
+
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", 'text');
+                    text.setAttribute('x', padding - 10);
+                    text.setAttribute('y', yPos + 3);
+                    text.setAttribute('text-anchor', 'end');
+                    text.setAttribute('style', 'font-size: 10px;');
+                    text.textContent = value.toFixed(2);
+                    svg.appendChild(text);
+                }
+
+                function createLine(data, className, color) {
                     if (!data) { return; }
                     const points = data.map((d, i) => `${xScale(i)} ${yScale(d)}`).join(' ');
                     const line = document.createElementNS("http://www.w3.org/2000/svg", 'polyline');
                     line.setAttribute('points', points);
-                    line.setAttribute('class', `line ${className}`);
+                    line.setAttribute('style', `fill: none; stroke-width: 2; stroke: ${color};`); // Inline style
                     svg.appendChild(line);
                 }
 
-                createLine(history[metricName], 'training-line');
-                createLine(history["val_" + metricName], 'validation-line');
+                createLine(history[metricName], 'training-line', 'blue');
+                createLine(history["val_" + metricName], 'validation-line', 'red');
 
-                // Add labels (very basic example)
+                // Add labels
                 const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 xLabel.setAttribute("x", width / 2);
                 xLabel.setAttribute("y", height);
                 xLabel.setAttribute("text-anchor", "middle");
+                xLabel.setAttribute("style", "font-size: 10px;"); // Inline style
                 xLabel.textContent = "Epochs";
                 svg.appendChild(xLabel);
 
                 const yLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 yLabel.setAttribute("x", 10);
-                yLabel.setAttribute("y", height / 2);
-                yLabel.setAttribute("transform", `rotate(-90 ${10} ${height / 2})`);
+                yLabel.setAttribute("y", padding - 10); // Move Y label up
+                yLabel.setAttribute("text-anchor", "middle");
+                yLabel.setAttribute("transform", `rotate(-90 ${10} ${padding -10})`);
+                yLabel.setAttribute("style", "font-size: 10px;"); // Inline style
                 yLabel.textContent = metricName;
                 svg.appendChild(yLabel);
             }
@@ -187,26 +240,38 @@
                 return;
             }
 
+            const svgArray = Array.from(svgs);
             let combinedWidth = 0;
             let combinedHeight = 0;
+            let maxWidth = 0;
             const svgStrings = [];
 
-            svgs.forEach(svg => {
+            svgArray.forEach(svg => {
                 const clonedSvg = svg.cloneNode(true);
                 const bbox = svg.getBoundingClientRect();
                 clonedSvg.setAttribute('width', bbox.width);
                 clonedSvg.setAttribute('height', bbox.height);
+
+                // Ensure styles are inline on the cloned SVG
+                const allElements = clonedSvg.querySelectorAll('*');
+                allElements.forEach(el => {
+                    const computedStyle = getComputedStyle(el);
+                    for (const prop of computedStyle) {
+                        el.style[prop] = computedStyle[prop];
+                    }
+                });
+
                 svgStrings.push(new XMLSerializer().serializeToString(clonedSvg));
-                combinedHeight += bbox.height + 20; // Add some spacing
-                combinedWidth = Math.max(combinedWidth, bbox.width);
+                combinedHeight += bbox.height + 20; // Add vertical spacing
+                maxWidth = Math.max(maxWidth, bbox.width);
             });
 
             combinedHeight -= 20; // Remove extra spacing at the end
 
             const combinedSvg = `
-                <svg width="${combinedWidth}" height="${combinedHeight}" xmlns="http://www.w3.org/2000/svg">
+                <svg width="${maxWidth}" height="${combinedHeight}" xmlns="http://www.w3.org/2000/svg">
                     ${svgStrings.map((svgString, index) => {
-                        const yOffset = svgs.slice(0, index).reduce((sum, svg) => sum + svg.getBoundingClientRect().height + 20, 0);
+                        const yOffset = svgArray.slice(0, index).reduce((sum, svg) => sum + svg.getBoundingClientRect().height + 20, 0);
                         return `<g transform="translate(0, ${yOffset})">${svgString}</g>`;
                     }).join('')}
                 </svg>
@@ -218,9 +283,11 @@
 
             image.onload = () => {
                 const canvas = document.createElement('canvas');
-                canvas.width = combinedWidth;
+                canvas.width = maxWidth;
                 canvas.height = combinedHeight;
                 const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'white'; // Set background to white
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(image, 0, 0);
                 const canvasUrl = canvas.toDataURL('image/png');
 
