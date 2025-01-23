@@ -240,7 +240,7 @@
     }
   }
 
-  const aiDepth = 5;
+  const aiDepth = 9;
 
   function makeAiMove() {
     let bestMove;
@@ -402,7 +402,7 @@
       for (let col = 0; col < 8; col++) {
         const piece = board[row][col];
         if (piece) {
-          score += pieceScores[piece] * (getPieceColor(piece) !== 'white' ? -1 : 1);
+          score += pieceScores[piece] * (getPieceColor(piece) === 'white' ? -1 : 1);
         }
       }
     }
