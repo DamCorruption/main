@@ -82,16 +82,13 @@
 
   // Piece Scores
   const pieceScores = {
-    'p': 1, 'r': 5, 'n': 3, 'b': 3, 'q': 9, 'k': 1000,
-    'P': 1, 'R': 5, 'N': 3, 'B': 3, 'Q': 9, 'K': 1000
+    'p': 1, 'r': 5, 'n': 4, 'b': 5, 'q': 9, 'k': 20,
+    'P': 1, 'R': 5, 'N': 4, 'B': 5, 'Q': 9, 'K': 20
   };
 
   // Opening Knowledge (Example - simple array of moves)
   const openingMoves = [
-      { startRow: 6, startCol: 4, endRow: 4, endCol: 4 }, // e4
-      { startRow: 1, startCol: 4, endRow: 3, endCol: 4 }, // e5
-      { startRow: 7, startCol: 6, endRow: 5, endCol: 5 }, // Nf3
-      { startRow: 0, startCol: 1, endRow: 2, endCol: 2 }  // Nc6
+
   ];
   let moveNumber = 0;
 
@@ -239,11 +236,11 @@
     currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
     drawBoard();
     if (currentPlayer === 'black') {
-      setTimeout(makeAiMove, 100);
+      setTimeout(makeAiMove, 10);
     }
   }
 
-  const aiDepth = 3;
+  const aiDepth = 5;
 
   function makeAiMove() {
     let bestMove;
