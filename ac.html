@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SNN Autocomplete v7 (Single-File Worker)</title>
+    <style>
+        /* CSS is identical to previous versions, no changes needed */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px 0; }
+        .container { width: 80%; max-width: 700px; background-color: #1e1e1e; border-radius: 8px; padding: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5); }
+        h1 { color: #bb86fc; text-align: center; border-bottom: 2px solid #373737; padding-bottom: 10px; }
+        .chat-window { height: 250px; border: 1px solid #373737; background-color: #2c2c2c; padding: 10px; margin-bottom: 15px; overflow-y: auto; border-radius: 4px; }
+        .chat-message { margin-bottom: 8px; word-wrap: break-word; }
+        .user-message { color: #03dac6; }
+        .system-message { color: #cf6679; font-style: italic;}
+        .chatbox-container { display: flex; }
+        #chat-input { flex-grow: 1; padding: 10px; border: 1px solid #373737; background-color: #2c2c2c; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
+        .button-group { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .button { padding: 10px 15px; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
+        #train-button { background-color: #bb86fc; color: #121212; }
+        #train-button:hover { background-color: #a067e8; }
+        #save-button, #import-label { background-color: #03dac6; color: #121212; }
+        #save-button:hover, #import-label:hover { background-color: #01b8a1; }
+        .button:disabled { background-color: #373737; cursor: not-allowed; color: #888; }
+        #import-input { display: none; }
+        .status-box { margin-top: 15px; padding: 10px; background-color: #252525; border-left: 4px solid #03dac6; min-height: 40px; }
+        #prediction-container { font-weight: bold; color: #f0e68c; }
+        .tab-hint { font-size: 0.8em; color: #888; }
+        textarea { width: 100%; box-sizing: border-box; height: 150px; background-color: #2c2c2c; color: #e0e0e0; border: 1px solid #373737; margin-top: 10px; font-family: monospace; }
+        .blinking-cursor { animation: blink 1s step-end infinite; }
+        @keyframes blink { from, to { opacity: 1; } 50% { opacity: 0; } }
+        #progress-container { width: 100%; background-color: #373737; border-radius: 4px; margin-top: 10px; display: none; }
+        #progress-bar { width: 0%; height: 10px; background-color: #03dac6; border-radius: 4px; transition: width 0.1s linear; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SNN Autocomplete v7 (Single-File Worker)</h1>
+        <p>Training Data:</p>
+        <textarea id="training-data">
+Hello, how are you? I am fine, thank you.
+How are you doing today? I am doing great!
+What is your name? My name is a simple model. I do not have a real name.
+What can you do? I can predict the next word in a sentence.
+That is very cool. Thank you, I try my best.
+The weather is nice today. Yes, the weather is sunny and warm.
+I like sunny weather. I like rainy weather too, it is very peaceful.
+What are you learning about? I am learning about human language.
+Language is very complex... yes, it is very interesting. I find it fascinating.
+Do you have any friends? You are my friend. Everyone who talks to me is a friend.
+That is nice to hear. I am happy to help in any way I can.
+What time is it? I do not have a clock, so I cannot tell the time.
+Can you tell me a joke? Why did the scarecrow win an award?
+Because he was outstanding in his field.
+That is a funny joke! I am glad you think so.
+Good morning. Good afternoon. Good evening. Good night.
+See you later! Goodbye for now. I hope we talk again soon.
+Hey, how is it going? It is going well, thanks for asking.
+How was your day? My day was very productive.
+What did you do today? I learned a lot of new words and phrases.
+That sounds like a good day. It was a very good day indeed.
+        </textarea>
+        <div class="button-group">
+            <button id="train-button" class="button">Train Model</button>
+            <button id="save-button" class="button" disabled>Save Model</button>
+            <label for="import-input" id="import-label" class="button">Import Model</label>
+            <input type="file" id="import-input" accept=".json">
+        </div>
+        <div id="progress-container"><div id="progress-bar"></div></div>
+        <div class="status-box">
+            Status: <span id="status">Idle. Press 'Train Model' or 'Import Model'.</span><br>
+            Prediction: <span id="prediction-container"><span id="prediction-text"></span><span class="blinking-cursor">|</span></span> <span class="tab-hint">(Press Tab to complete)</span>
+        </div>
+        <div class="chat-window" id="chat-window"></div>
+        <div class="chatbox-container">
+            <input type="text" id="chat-input" placeholder="Train or import a model to begin..." disabled>
+        </div>
+    </div>
+
+    <script>
+        // --- PART 1: THE WORKER'S CODE AS A STRING ---
+        // We embed the entire logic of the worker file into a single template literal string.
+        const workerCode = `
+            // --- This code runs in the background and does all the heavy SNN computation. ---
+            
+            // --- SNN Parameters (lives in the worker) ---
+            const SNN_PARAMS = { NUM_NEURONS: 120, SPARSITY: 0.1, THRESHOLD: 1.0, DECAY: 0.98, REFRACTORY_PERIOD: 5, INPUT_STRENGTH: 2.0, SIM_TIME_PER_WORD: 20, LEARNING_RATE: 0.001, EPOCHS: 50 };
+
+            // --- Model State (lives entirely in the worker) ---
+            let model = {};
+            function resetModel() {
+                model = {
+                    vocabulary: [], wordToIndex: {}, neurons: [], reservoirWeights: [],
+                    inputWeights: {}, readoutWeights: {}, isTrained: false,
+                    successorMap: new Map(), originalCaseMap: new Map(),
+                    stateCache: new Map(),
+                };
+            }
+            resetModel();
+
+            // --- Main message handler: This is the entry point for all commands from the UI thread ---
+            self.onmessage = function(e) {
+                const { command, data } = e.data;
+                switch (command) {
+                    case 'train': trainModel(data.trainingText); break;
+                    case 'predict': predictAndSend(data.words, data.lastToken); break;
+                    case 'loadModel': loadModel(data.modelData); break;
+                }
+            };
+
+            // --- Tokenizer & Network Initialization ---
+            function tokenize(text) { return text.match(/[\\w']+|[.,!?;:"]|[\\n]/g) || []; }
+            function initializeNetwork(vocabulary, numNeurons) {
+                model.vocabulary = vocabulary;
+                model.wordToIndex = vocabulary.reduce((acc, word, i) => ({ ...acc, [word]: i }), {});
+                model.neurons = Array(numNeurons).fill(0).map(() => ({ p: 0, r: 0, s: false }));
+                model.reservoirWeights = Array(numNeurons).fill(0).map(() => Array(numNeurons).fill(0).map(() => Math.random() < SNN_PARAMS.SPARSITY ? Math.random() - 0.5 : 0));
+                model.inputWeights = {};
+                vocabulary.forEach(word => {
+                    model.inputWeights[word] = Array(numNeurons).fill(0).map(() => Math.random() < 0.1 ? SNN_PARAMS.INPUT_STRENGTH : 0);
+                });
+            }
+
+            // --- Core SNN Simulation ---
+            function runSimulationStep(inputCurrents) { const N = SNN_PARAMS.NUM_NEURONS; const incomingPotentials = Array(N).fill(0); for (let i = 0; i < N; i++) { for (let j = 0; j < N; j++) { if (model.neurons[j].s) incomingPotentials[i] += model.reservoirWeights[j][i]; } } for (let i = 0; i < N; i++) { const neuron = model.neurons[i]; neuron.s = false; if (neuron.r > 0) { neuron.p = 0; neuron.r--; } else { neuron.p = neuron.p * SNN_PARAMS.DECAY + inputCurrents[i] + incomingPotentials[i]; } if (neuron.p > SNN_PARAMS.THRESHOLD) { neuron.p = 0; neuron.r = SNN_PARAMS.REFRACTORY_PERIOD; neuron.s = true; } } }
+            function processSequence(words) { const cacheKey = words.join(' '); if (model.stateCache.has(cacheKey)) { return model.stateCache.get(cacheKey); } model.neurons.forEach(n => { n.p = 0; n.r = 0; n.s = false; }); const spikeCounts = Array(SNN_PARAMS.NUM_NEURONS).fill(0); words.forEach(word => { if (!model.wordToIndex.hasOwnProperty(word)) return; const inputCurrents = model.inputWeights[word]; for (let t = 0; t < SNN_PARAMS.SIM_TIME_PER_WORD; t++) { runSimulationStep(t === 0 ? inputCurrents : Array(SNN_PARAMS.NUM_NEURONS).fill(0)); for (let i = 0; i < SNN_PARAMS.NUM_NEURONS; i++) { if (model.neurons[i].s) spikeCounts[i]++; } } }); model.stateCache.set(cacheKey, spikeCounts); return spikeCounts; }
+
+            // --- Training Logic ---
+            function trainModel(trainingText) {
+                postMessage({ command: 'statusUpdate', message: 'Initializing model...' });
+                const allTokens = tokenize(trainingText);
+                model.successorMap.clear(); model.originalCaseMap.clear();
+                for (let i = 0; i < allTokens.length - 1; i++) { const currentToken = allTokens[i], nextToken = allTokens[i+1], lowerToken = currentToken.toLowerCase(); if (!model.originalCaseMap.has(lowerToken)) { model.originalCaseMap.set(lowerToken, new Set()); } model.originalCaseMap.get(lowerToken).add(currentToken); if (!/[\\w']/.test(nextToken)) { if (!model.successorMap.has(lowerToken)) { model.successorMap.set(lowerToken, new Map()); } const counts = model.successorMap.get(lowerToken); counts.set(nextToken, (counts.get(nextToken) || 0) + 1); } }
+                
+                const uniqueWords = [...new Set(allTokens.map(t => t.toLowerCase()).filter(t => /[\\w']/.test(t)))];
+                initializeNetwork(uniqueWords, SNN_PARAMS.NUM_NEURONS);
+                model.readoutWeights = uniqueWords.reduce((acc, word) => ({ ...acc, [word]: Array(SNN_PARAMS.NUM_NEURONS).fill(0) }), {});
+                model.stateCache.clear();
+                
+                postMessage({ command: 'statusUpdate', message: \`Training on \${uniqueWords.length} words...\` });
+                const sentences = trainingText.split('\\n').filter(s => s.trim() !== '');
+                const totalSteps = sentences.length * SNN_PARAMS.EPOCHS;
+                let completedSteps = 0;
+
+                for (let epoch = 0; epoch < SNN_PARAMS.EPOCHS; epoch++) {
+                    for (const sentence of sentences) {
+                        const tokens = tokenize(sentence).map(t => t.toLowerCase());
+                        for (let i = 1; i < tokens.length; i++) {
+                            const currentToken = tokens[i];
+                            if (!model.wordToIndex.hasOwnProperty(currentToken)) continue;
+                            const context = tokens.slice(0, i).filter(t => model.wordToIndex.hasOwnProperty(t));
+                            if (context.length === 0) continue;
+                            const reservoirState = processSequence(context);
+                            model.vocabulary.forEach(word => {
+                                const predictionScore = reservoirState.reduce((sum, spike, j) => sum + spike * model.readoutWeights[word][j], 0);
+                                const target = (word === currentToken) ? 1.0 : 0.0; const error = target - predictionScore;
+                                if (Math.abs(error) > 0.001) { for (let j = 0; j < SNN_PARAMS.NUM_NEURONS; j++) { if (reservoirState[j] > 0) { model.readoutWeights[word][j] += SNN_PARAMS.LEARNING_RATE * error * reservoirState[j]; } } }
+                            });
+                        }
+                    }
+                    completedSteps += sentences.length;
+                    postMessage({ command: 'progress', value: (completedSteps / totalSteps) * 100 });
+                }
+                
+                model.isTrained = true;
+                postMessage({ command: 'trainingComplete', model });
+            }
+
+            // --- Import/Load Logic ---
+            function loadModel(modelData) {
+                resetModel();
+                try {
+                    initializeNetwork(modelData.vocabulary, SNN_PARAMS.NUM_NEURONS);
+                    model.readoutWeights = modelData.readoutWeights;
+                    model.successorMap = new Map(modelData.successorMap.map(([key, value]) => [key, new Map(value)]));
+                    model.originalCaseMap = new Map(modelData.originalCaseMap.map(([key, value]) => [key, new Set(value)]));
+                    model.isTrained = true;
+                    postMessage({ command: 'importComplete', model });
+                } catch(e) { postMessage({ command: 'error', message: 'Failed to parse model file.' }); }
+            }
+
+            // --- Prediction Logic ---
+            function predictAndSend(words, lastToken) {
+                if (!model.isTrained || words.length === 0) { postMessage({ command: 'predictionResult', prediction: "" }); return; }
+                const reservoirState = processSequence(words);
+                let bestWord = '', maxScore = -Infinity;
+                model.vocabulary.forEach(word => {
+                    const score = reservoirState.reduce((sum, spike, i) => sum + spike * model.readoutWeights[word][i], 0);
+                    if (score > maxScore) { maxScore = score; bestWord = word; }
+                });
+                let punctuation = '';
+                if (model.successorMap.has(bestWord)) { const p = [...model.successorMap.get(bestWord).entries()]; if(p.length > 0) { p.sort((a,b) => b[1] - a[1]); punctuation = p[0][0]; } }
+                const finalPrediction = postProcessPrediction(bestWord, punctuation, lastToken);
+                postMessage({ command: 'predictionResult', prediction: finalPrediction });
+            }
+            function postProcessPrediction(word, punctuation, lastToken) { if (!word) return ""; if (word === 'i') return 'I' + punctuation; const sentenceEnders = ['.', '!', '?']; if (!lastToken || sentenceEnders.includes(lastToken)) { const casings = model.originalCaseMap.get(word); const capitalized = [...casings].find(c => c[0] === c[0].toUpperCase()); return (capitalized || word) + punctuation; } return word + punctuation; }
+        `;
+
+        // --- PART 2: THE MAIN UI THREAD SCRIPT ---
+
+        const ui = {
+            chatInput: document.getElementById('chat-input'), trainButton: document.getElementById('train-button'), saveButton: document.getElementById('save-button'),
+            importInput: document.getElementById('import-input'), status: document.getElementById('status'), predictionText: document.getElementById('prediction-text'),
+            trainingData: document.getElementById('training-data'), progressContainer: document.getElementById('progress-container'), progressBar: document.getElementById('progress-bar'),
+            chatWindow: document.getElementById('chat-window'),
+        };
+
+        const TYPEWRITER_SPEED_MS = 80;
+        let typewriter = { animationId: null, fullPrediction: "" };
+        let trainedModelForSaving = null;
+
+        // --- Create the Web Worker from the string using a Blob ---
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const snnWorker = new Worker(URL.createObjectURL(blob));
+
+        // --- Listen for messages from the worker (this logic is unchanged) ---
+        snnWorker.onmessage = (e) => {
+            const { command, value, message, model, prediction } = e.data;
+            switch (command) {
+                case 'statusUpdate': ui.status.textContent = message; break;
+                case 'progress': ui.progressBar.style.width = `${value}%`; break;
+                case 'trainingComplete': trainedModelForSaving = model; trainingFinished(); break;
+                case 'predictionResult': if (prediction) { typewriter.fullPrediction = prediction; startPredictionAnimation(prediction); } else { typewriter.fullPrediction = ""; ui.predictionText.textContent = "..."; } break;
+                case 'importComplete': trainedModelForSaving = model; trainingFinished(); ui.status.textContent = 'Model successfully imported!'; addMessage("Model loaded from file. Ready to go!", "system-message"); break;
+                case 'error': alert(`Worker Error: ${message}`); setTrainingState(false); break;
+            }
+        };
+        
+        // --- Event Listeners to send commands TO the worker (this logic is unchanged) ---
+        ui.trainButton.addEventListener('click', () => { setTrainingState(true); const trainingText = ui.trainingData.value; snnWorker.postMessage({ command: 'train', data: { trainingText } }); });
+        ui.importInput.addEventListener('change', (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const modelData = JSON.parse(e.target.result); setTrainingState(true); ui.status.textContent = "Importing model..."; snnWorker.postMessage({ command: 'loadModel', data: { modelData } }); } catch (error) { alert("Error: The selected file is not a valid JSON model file."); } }; reader.readAsText(file); ui.importInput.value = ''; });
+        ui.saveButton.addEventListener('click', () => { if (!trainedModelForSaving) { alert("Model data not available."); return; } const dataToSave = { readoutWeights: trainedModelForSaving.readoutWeights, vocabulary: trainedModelForSaving.vocabulary, successorMap: Array.from(trainedModelForSaving.successorMap.entries()).map(([key, value]) => [key, Array.from(value.entries())]), originalCaseMap: Array.from(trainedModelForSaving.originalCaseMap.entries()).map(([key, value]) => [key, Array.from(value)]), }; const blob = new Blob([JSON.stringify(dataToSave, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'snn_model.json'; a.click(); URL.revokeObjectURL(url); });
+        
+        // --- Real-time Prediction and UI management (this logic is unchanged) ---
+        function handleTyping() { stopPredictionAnimation(); const text = ui.chatInput.value; const tokens = text.match(/[\w']+|[.,!?;:"]|[\n]/g) || []; const words = tokens.map(t => t.toLowerCase()).filter(t => t.length > 0 && !/[.,!?;:"]/.test(t)); const lastToken = tokens.length > 0 ? tokens[tokens.length - 1] : null; if (words.length === 0) { typewriter.fullPrediction = ""; ui.predictionText.textContent = ""; return; } snnWorker.postMessage({ command: 'predict', data: { words, lastToken } }); }
+        ui.chatInput.addEventListener('input', handleTyping);
+        ui.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); acceptPrediction(); } else if (e.key === 'Enter' && ui.chatInput.value.trim() !== '') { addMessage(ui.chatInput.value.trim(), 'user-message'); ui.chatInput.value = ''; stopPredictionAnimation(); ui.predictionText.textContent = ''; typewriter.fullPrediction = ''; } });
+        function setTrainingState(isTraining) { ui.trainButton.disabled = isTraining; ui.importInput.parentElement.style.pointerEvents = isTraining ? 'none' : 'auto'; ui.importInput.parentElement.style.opacity = isTraining ? 0.5 : 1; ui.chatInput.disabled = isTraining; ui.saveButton.disabled = true; ui.progressContainer.style.display = isTraining ? 'block' : 'none'; ui.progressBar.style.width = '0%'; if (isTraining) { ui.status.textContent = 'Processing in background...'; stopPredictionAnimation(); } }
+        function trainingFinished() { setTrainingState(false); ui.saveButton.disabled = false; ui.chatInput.disabled = false; ui.status.textContent = 'Model ready. You can start typing.'; ui.chatInput.focus(); addMessage("Model is trained and ready!", "system-message"); }
+        function addMessage(text, className) { const d=document.createElement('div');d.classList.add('chat-message', className);d.textContent=`> ${text}`;ui.chatWindow.appendChild(d);ui.chatWindow.scrollTop=ui.chatWindow.scrollHeight; }
+        function startPredictionAnimation(text) { let i=0;ui.predictionText.textContent='';typewriter.animationId=setInterval(()=>{if(i<text.length){ui.predictionText.textContent+=text[i++];}else{stopPredictionAnimation();}},TYPEWRITER_SPEED_MS);}
+        function stopPredictionAnimation() { clearInterval(typewriter.animationId); typewriter.animationId = null; }
+        function acceptPrediction() { stopPredictionAnimation();if(typewriter.fullPrediction){const sp=ui.chatInput.value.endsWith(' ');if(ui.chatInput.value.length>0&&!sp){ui.chatInput.value+=' ';}ui.chatInput.value+=typewriter.fullPrediction;handleTyping();}}
+    </script>
+</body>
+</html>
