@@ -3,244 +3,744 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNN Autocomplete v7 (Single-File Worker)</title>
+    <title>Kinematic Distance Explorer</title>
     <style>
-        /* CSS is identical to previous versions, no changes needed */
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px 0; }
-        .container { width: 80%; max-width: 700px; background-color: #1e1e1e; border-radius: 8px; padding: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5); }
-        h1 { color: #bb86fc; text-align: center; border-bottom: 2px solid #373737; padding-bottom: 10px; }
-        .chat-window { height: 250px; border: 1px solid #373737; background-color: #2c2c2c; padding: 10px; margin-bottom: 15px; overflow-y: auto; border-radius: 4px; }
-        .chat-message { margin-bottom: 8px; word-wrap: break-word; }
-        .user-message { color: #03dac6; }
-        .system-message { color: #cf6679; font-style: italic;}
-        .chatbox-container { display: flex; }
-        #chat-input { flex-grow: 1; padding: 10px; border: 1px solid #373737; background-color: #2c2c2c; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
-        .button-group { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .button { padding: 10px 15px; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
-        #train-button { background-color: #bb86fc; color: #121212; }
-        #train-button:hover { background-color: #a067e8; }
-        #save-button, #import-label { background-color: #03dac6; color: #121212; }
-        #save-button:hover, #import-label:hover { background-color: #01b8a1; }
-        .button:disabled { background-color: #373737; cursor: not-allowed; color: #888; }
-        #import-input { display: none; }
-        .status-box { margin-top: 15px; padding: 10px; background-color: #252525; border-left: 4px solid #03dac6; min-height: 40px; }
-        #prediction-container { font-weight: bold; color: #f0e68c; }
-        .tab-hint { font-size: 0.8em; color: #888; }
-        textarea { width: 100%; box-sizing: border-box; height: 150px; background-color: #2c2c2c; color: #e0e0e0; border: 1px solid #373737; margin-top: 10px; font-family: monospace; }
-        .blinking-cursor { animation: blink 1s step-end infinite; }
-        @keyframes blink { from, to { opacity: 1; } 50% { opacity: 0; } }
-        #progress-container { width: 100%; background-color: #373737; border-radius: 4px; margin-top: 10px; display: none; }
-        #progress-bar { width: 0%; height: 10px; background-color: #03dac6; border-radius: 4px; transition: width 0.1s linear; }
+        :root {
+            --bg-deep: #0b0f19;
+            --bg-panel: #111827;
+            --border-glow: #1e293b;
+            --neon-green: #00ff66;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        header {
+            background-color: var(--bg-panel);
+            border-bottom: 1px solid var(--border-glow);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        .status {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: monospace;
+            background: #070a12;
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #1e293b;
+            max-width: 60%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .control-panel {
+            width: 320px;
+            background-color: var(--bg-panel);
+            border-right: 1px solid var(--border-glow);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-label {
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+
+        input[type="file"] {
+            background: #1f2937;
+            border: 1px solid var(--border-glow);
+            padding: 8px;
+            border-radius: 6px;
+            color: var(--text-main);
+            font-size: 12px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        textarea {
+            background: #070a12;
+            border: 1px solid var(--border-glow);
+            padding: 12px;
+            border-radius: 6px;
+            color: var(--text-main);
+            font-family: monospace;
+            font-size: 12px;
+            resize: none;
+            height: 120px;
+            width: 100%;
+        }
+
+        textarea:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--neon-green);
+        }
+
+        button {
+            background: var(--neon-green);
+            color: #000;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .engine-select-panel {
+            border-top: 1px solid var(--border-glow);
+            padding-top: 20px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .mode-btn {
+            background: #1e293b;
+            color: var(--text-main);
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn:hover {
+            background: #334155;
+        }
+
+        .mode-btn.active {
+            background: rgba(0, 255, 102, 0.1);
+            color: var(--neon-green);
+            border: 1px solid var(--neon-green);
+        }
+
+        .plot-panel {
+            flex: 1;
+            background: var(--bg-deep);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+            background: #070a12;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>SNN Autocomplete v7 (Single-File Worker)</h1>
-        <p>Training Data:</p>
-        <textarea id="training-data">
-Hello, how are you? I am fine, thank you.
-How are you doing today? I am doing great!
-What is your name? My name is a simple model. I do not have a real name.
-What can you do? I can predict the next word in a sentence.
-That is very cool. Thank you, I try my best.
-The weather is nice today. Yes, the weather is sunny and warm.
-I like sunny weather. I like rainy weather too, it is very peaceful.
-What are you learning about? I am learning about human language.
-Language is very complex... yes, it is very interesting. I find it fascinating.
-Do you have any friends? You are my friend. Everyone who talks to me is a friend.
-That is nice to hear. I am happy to help in any way I can.
-What time is it? I do not have a clock, so I cannot tell the time.
-Can you tell me a joke? Why did the scarecrow win an award?
-Because he was outstanding in his field.
-That is a funny joke! I am glad you think so.
-Good morning. Good afternoon. Good evening. Good night.
-See you later! Goodbye for now. I hope we talk again soon.
-Hey, how is it going? It is going well, thanks for asking.
-How was your day? My day was very productive.
-What did you do today? I learned a lot of new words and phrases.
-That sounds like a good day. It was a very good day indeed.
-        </textarea>
-        <div class="button-group">
-            <button id="train-button" class="button">Train Model</button>
-            <button id="save-button" class="button" disabled>Save Model</button>
-            <label for="import-input" id="import-label" class="button">Import Model</label>
-            <input type="file" id="import-input" accept=".json">
+
+<div class="app-container">
+    <header>
+        <h2>Kinematic Distance Explorer (WebGL2 Accelerated)</h2>
+        <div id="statusMsg" class="status">Ready for GPU matrix execution.</div>
+    </header>
+    
+    <div class="main-content">
+        <div class="control-panel">
+            <div class="input-group">
+                <label class="input-label">Option A: Upload JSON File</label>
+                <input type="file" id="fileInput" accept=".json" />
+            </div>
+            
+            <div class="input-group">
+                <label class="input-label">Option B: Paste Flat Data Matrix</label>
+                <textarea id="dataInput" placeholder="[[0.1, -0.2], [-0.5, 0.9]]"></textarea>
+            </div>
+            
+            <button id="runBtn">Analyze Data Context</button>
+
+            <div class="engine-select-panel" id="engineSelectors" style="display:none;">
+                <label class="input-label" style="color:var(--neon-green); margin-bottom:10px; display:block;">Hyperparameter Tuning</label>
+                
+                <div style="margin-bottom:15px;">
+                    <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Clusters (K)</label>
+                    <input type="number" id="paramK" value="5" min="2" max="12" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
+                </div>
+
+                <label class="input-label" style="color:var(--neon-green);">Engine Visualization Mode</label>
+                <div class="btn-group">
+                    <button class="mode-btn active" data-mode="highdim">1. High-Dim Feature K-Means</button>
+                    <button class="mode-btn" data-mode="kmedoids">2. High-Dim K-Medoids (Exemplars)</button>
+                    <button class="mode-btn" data-mode="gmm">3. Gaussian Mixture Model (EM)</button>
+                    <button class="mode-btn" data-mode="fuzzy">4. Fuzzy C-Means (Soft Clusters)</button>
+                    <button class="mode-btn" data-mode="velocity">5. Velocity Delta Clusters</button>
+                </div>
+            </div>
         </div>
-        <div id="progress-container"><div id="progress-bar"></div></div>
-        <div class="status-box">
-            Status: <span id="status">Idle. Press 'Train Model' or 'Import Model'.</span><br>
-            Prediction: <span id="prediction-container"><span id="prediction-text"></span><span class="blinking-cursor">|</span></span> <span class="tab-hint">(Press Tab to complete)</span>
-        </div>
-        <div class="chat-window" id="chat-window"></div>
-        <div class="chatbox-container">
-            <input type="text" id="chat-input" placeholder="Train or import a model to begin..." disabled>
+        
+        <div class="plot-panel">
+            <canvas id="plotCanvas"></canvas>
         </div>
     </div>
+</div>
 
-    <script>
-        // --- PART 1: THE WORKER'S CODE AS A STRING ---
-        // We embed the entire logic of the worker file into a single template literal string.
-        const workerCode = `
-            // --- This code runs in the background and does all the heavy SNN computation. ---
-            
-            // --- SNN Parameters (lives in the worker) ---
-            const SNN_PARAMS = { NUM_NEURONS: 120, SPARSITY: 0.1, THRESHOLD: 1.0, DECAY: 0.98, REFRACTORY_PERIOD: 5, INPUT_STRENGTH: 2.0, SIM_TIME_PER_WORD: 20, LEARNING_RATE: 0.001, EPOCHS: 50 };
+<script>
+let globalX = null;
+let globalPoints = null;
+let globalClusterMaps = { highdim: null, kmedoids: null, gmm: null, fuzzy: null, velocity: null };
+let currentViewMode = 'highdim';
 
-            // --- Model State (lives entirely in the worker) ---
-            let model = {};
-            function resetModel() {
-                model = {
-                    vocabulary: [], wordToIndex: {}, neurons: [], reservoirWeights: [],
-                    inputWeights: {}, readoutWeights: {}, isTrained: false,
-                    successorMap: new Map(), originalCaseMap: new Map(),
-                    stateCache: new Map(),
-                };
+// Hooking functional event boundaries
+document.getElementById('runBtn').addEventListener('click', handleExecution);
+document.getElementById('paramK').addEventListener('change', () => {
+    if (globalX) recomputeAndRender();
+});
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentViewMode = e.target.getAttribute('data-mode');
+        if (globalPoints) renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
+    });
+});
+
+function updateStatus(msg, isError = false) {
+    const statusDiv = document.getElementById('statusMsg');
+    if (statusDiv) {
+        statusDiv.textContent = msg;
+        statusDiv.style.color = isError ? '#ff3366' : '#94a3b8';
+    }
+}
+
+function handleExecution() {
+    const fileInput = document.getElementById('fileInput');
+    const textInput = document.getElementById('dataInput').value.trim();
+    
+    if (fileInput.files.length > 0) {
+        const reader = new FileReader();
+        updateStatus("Streaming array buffer into WebGL context...");
+        reader.onload = function(e) {
+            try { globalX = JSON.parse(e.target.result); recomputeAndRender(); } 
+            catch(err) { updateStatus("JSON Parse Error: " + err.message, true); }
+        };
+        reader.readAsText(fileInput.files[0]);
+    } else if (textInput) {
+        try { globalX = JSON.parse(textInput); recomputeAndRender(); } 
+        catch(err) { updateStatus("JSON Parse Error: " + err.message, true); }
+    } else {
+        updateStatus("Error: Please provide a valid data source.", true);
+    }
+}
+
+// ==========================================
+// NATIVE WEBGL2 COMPUTE CORE (GPGPU)
+// ==========================================
+function gpuComputeDistances(matrix, numSamples, numFeatures) {
+    const canvas = document.createElement('canvas');
+    canvas.width = numSamples;
+    canvas.height = numSamples;
+    const gl = canvas.getContext('webgl2');
+    
+    if (!gl) throw new Error("WebGL2 not supported.");
+    if (!gl.getExtension('EXT_color_buffer_float')) {
+        throw new Error("WebGL2 Float Texture rendering unsupported.");
+    }
+
+    const numChunks = Math.ceil(numFeatures / 4);
+    const texWidth = numChunks;
+    const texHeight = numSamples;
+    const texData = new Float32Array(texWidth * texHeight * 4);
+    
+    for (let i = 0; i < numSamples; i++) {
+        for (let f = 0; f < numFeatures; f++) {
+            texData[i * (texWidth * 4) + f] = matrix[i][f];
+        }
+    }
+
+    const vsSource = `#version 300 es
+        in vec2 position;
+        void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+
+    const fsSource = `#version 300 es
+        precision highp float;
+        uniform sampler2D uDataTex;
+        uniform int uNumChunks;
+        uniform int uNumSamples;
+        out vec4 fragColor;
+
+        void main() {
+            int i = int(gl_FragCoord.y);
+            int j = int(gl_FragCoord.x);
+            if (i >= uNumSamples || j >= uNumSamples) { fragColor = vec4(0.0); return; }
+
+            float sumSq = 0.0;
+            for (int c = 0; c < uNumChunks; c++) {
+                vec4 valA = texelFetch(uDataTex, ivec2(c, i), 0);
+                vec4 valB = texelFetch(uDataTex, ivec2(c, j), 0);
+                vec4 diff = valA - valB;
+                sumSq += dot(diff, diff);
             }
-            resetModel();
+            fragColor = vec4(sqrt(sumSq), 0.0, 0.0, 1.0);
+        }`;
 
-            // --- Main message handler: This is the entry point for all commands from the UI thread ---
-            self.onmessage = function(e) {
-                const { command, data } = e.data;
-                switch (command) {
-                    case 'train': trainModel(data.trainingText); break;
-                    case 'predict': predictAndSend(data.words, data.lastToken); break;
-                    case 'loadModel': loadModel(data.modelData); break;
-                }
-            };
+    function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+    }
 
-            // --- Tokenizer & Network Initialization ---
-            function tokenize(text) { return text.match(/[\\w']+|[.,!?;:"]|[\\n]/g) || []; }
-            function initializeNetwork(vocabulary, numNeurons) {
-                model.vocabulary = vocabulary;
-                model.wordToIndex = vocabulary.reduce((acc, word, i) => ({ ...acc, [word]: i }), {});
-                model.neurons = Array(numNeurons).fill(0).map(() => ({ p: 0, r: 0, s: false }));
-                model.reservoirWeights = Array(numNeurons).fill(0).map(() => Array(numNeurons).fill(0).map(() => Math.random() < SNN_PARAMS.SPARSITY ? Math.random() - 0.5 : 0));
-                model.inputWeights = {};
-                vocabulary.forEach(word => {
-                    model.inputWeights[word] = Array(numNeurons).fill(0).map(() => Math.random() < 0.1 ? SNN_PARAMS.INPUT_STRENGTH : 0);
-                });
-            }
+    const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+    const program = gl.createProgram();
+    gl.attachShader(program, vs); gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    gl.useProgram(program);
 
-            // --- Core SNN Simulation ---
-            function runSimulationStep(inputCurrents) { const N = SNN_PARAMS.NUM_NEURONS; const incomingPotentials = Array(N).fill(0); for (let i = 0; i < N; i++) { for (let j = 0; j < N; j++) { if (model.neurons[j].s) incomingPotentials[i] += model.reservoirWeights[j][i]; } } for (let i = 0; i < N; i++) { const neuron = model.neurons[i]; neuron.s = false; if (neuron.r > 0) { neuron.p = 0; neuron.r--; } else { neuron.p = neuron.p * SNN_PARAMS.DECAY + inputCurrents[i] + incomingPotentials[i]; } if (neuron.p > SNN_PARAMS.THRESHOLD) { neuron.p = 0; neuron.r = SNN_PARAMS.REFRACTORY_PERIOD; neuron.s = true; } } }
-            function processSequence(words) { const cacheKey = words.join(' '); if (model.stateCache.has(cacheKey)) { return model.stateCache.get(cacheKey); } model.neurons.forEach(n => { n.p = 0; n.r = 0; n.s = false; }); const spikeCounts = Array(SNN_PARAMS.NUM_NEURONS).fill(0); words.forEach(word => { if (!model.wordToIndex.hasOwnProperty(word)) return; const inputCurrents = model.inputWeights[word]; for (let t = 0; t < SNN_PARAMS.SIM_TIME_PER_WORD; t++) { runSimulationStep(t === 0 ? inputCurrents : Array(SNN_PARAMS.NUM_NEURONS).fill(0)); for (let i = 0; i < SNN_PARAMS.NUM_NEURONS; i++) { if (model.neurons[i].s) spikeCounts[i]++; } } }); model.stateCache.set(cacheKey, spikeCounts); return spikeCounts; }
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, texWidth, texHeight, 0, gl.RGBA, gl.FLOAT, texData);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-            // --- Training Logic ---
-            function trainModel(trainingText) {
-                postMessage({ command: 'statusUpdate', message: 'Initializing model...' });
-                const allTokens = tokenize(trainingText);
-                model.successorMap.clear(); model.originalCaseMap.clear();
-                for (let i = 0; i < allTokens.length - 1; i++) { const currentToken = allTokens[i], nextToken = allTokens[i+1], lowerToken = currentToken.toLowerCase(); if (!model.originalCaseMap.has(lowerToken)) { model.originalCaseMap.set(lowerToken, new Set()); } model.originalCaseMap.get(lowerToken).add(currentToken); if (!/[\\w']/.test(nextToken)) { if (!model.successorMap.has(lowerToken)) { model.successorMap.set(lowerToken, new Map()); } const counts = model.successorMap.get(lowerToken); counts.set(nextToken, (counts.get(nextToken) || 0) + 1); } }
-                
-                const uniqueWords = [...new Set(allTokens.map(t => t.toLowerCase()).filter(t => /[\\w']/.test(t)))];
-                initializeNetwork(uniqueWords, SNN_PARAMS.NUM_NEURONS);
-                model.readoutWeights = uniqueWords.reduce((acc, word) => ({ ...acc, [word]: Array(SNN_PARAMS.NUM_NEURONS).fill(0) }), {});
-                model.stateCache.clear();
-                
-                postMessage({ command: 'statusUpdate', message: \`Training on \${uniqueWords.length} words...\` });
-                const sentences = trainingText.split('\\n').filter(s => s.trim() !== '');
-                const totalSteps = sentences.length * SNN_PARAMS.EPOCHS;
-                let completedSteps = 0;
+    gl.uniform1i(gl.getUniformLocation(program, "uNumChunks"), numChunks);
+    gl.uniform1i(gl.getUniformLocation(program, "uNumSamples"), numSamples);
 
-                for (let epoch = 0; epoch < SNN_PARAMS.EPOCHS; epoch++) {
-                    for (const sentence of sentences) {
-                        const tokens = tokenize(sentence).map(t => t.toLowerCase());
-                        for (let i = 1; i < tokens.length; i++) {
-                            const currentToken = tokens[i];
-                            if (!model.wordToIndex.hasOwnProperty(currentToken)) continue;
-                            const context = tokens.slice(0, i).filter(t => model.wordToIndex.hasOwnProperty(t));
-                            if (context.length === 0) continue;
-                            const reservoirState = processSequence(context);
-                            model.vocabulary.forEach(word => {
-                                const predictionScore = reservoirState.reduce((sum, spike, j) => sum + spike * model.readoutWeights[word][j], 0);
-                                const target = (word === currentToken) ? 1.0 : 0.0; const error = target - predictionScore;
-                                if (Math.abs(error) > 0.001) { for (let j = 0; j < SNN_PARAMS.NUM_NEURONS; j++) { if (reservoirState[j] > 0) { model.readoutWeights[word][j] += SNN_PARAMS.LEARNING_RATE * error * reservoirState[j]; } } }
-                            });
-                        }
+    const positions = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+    const posLoc = gl.getAttribLocation(program, "position");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    const rb = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, rb);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, numSamples, numSamples, 0, gl.RGBA, gl.FLOAT, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rb, 0);
+
+    gl.viewport(0, 0, numSamples, numSamples);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    const outputBuffer = new Float32Array(numSamples * numSamples * 4);
+    gl.readPixels(0, 0, numSamples, numSamples, gl.RGBA, gl.FLOAT, outputBuffer);
+
+    gl.deleteTexture(texture); gl.deleteTexture(rb); gl.deleteFramebuffer(fb); gl.deleteProgram(program);
+
+    const finalDistMatrix = new Float32Array(numSamples * numSamples);
+    for (let i = 0; i < numSamples * numSamples; i++) {
+        finalDistMatrix[i] = outputBuffer[i * 4];
+    }
+    return finalDistMatrix;
+}
+
+// ==========================================
+// ASYNCHRONOUS ENGINE MANAGEMENT PIPELINE
+// ==========================================
+function recomputeAndRender() {
+    const numSamples = globalX.length;
+    const numFeatures = globalX[0]?.length || 0;
+    
+    if (numSamples < 3 || numFeatures === 0) {
+        updateStatus("Invalid matrix dimensions.", true);
+        return;
+    }
+
+    const K = parseInt(document.getElementById('paramK').value) || 5;
+    updateStatus("Stage 1/3: Allocating Parallel GPU Vectors...");
+
+    setTimeout(() => {
+        let startTime = performance.now();
+        let flatDistanceMatrix = gpuComputeDistances(globalX, numSamples, numFeatures);
+
+        updateStatus("Stage 2/3: Linearly Unrolling Dimensional Projections...");
+
+        const flatX = new Float32Array(numSamples * numFeatures);
+        for (let i = 0; i < numSamples; i++) flatX.set(globalX[i], i * numFeatures);
+
+        const means = new Float32Array(numFeatures);
+        for (let i = 0; i < numSamples * numFeatures; i++) {
+            means[i % numFeatures] += flatX[i];
+        }
+        for (let j = 0; j < numFeatures; j++) means[j] /= numSamples;
+
+        function computePCLinear(fMatrix, sComp = null) {
+            let p = new Float32Array(numFeatures).map(() => Math.random() - 0.5);
+            let t = new Float32Array(numSamples);
+            let pNorm = 0;
+            for(let j=0; j<numFeatures; j++) pNorm += p[j] * p[j];
+            pNorm = Math.sqrt(pNorm);
+            for(let j=0; j<numFeatures; j++) p[j] /= (pNorm || 1);
+
+            for (let iter = 0; iter < 5; iter++) {
+                let totalElements = numSamples * numFeatures;
+                let currentScore = 0;
+                for (let idx = 0; idx < totalElements; idx++) {
+                    let i = Math.floor(idx / numFeatures);
+                    let j = idx % numFeatures;
+                    let v = fMatrix[idx] - means[j];
+                    if (sComp) v -= sComp.scores[i] * sComp.vector[j];
+                    currentScore += v * p[j];
+                    
+                    if (j === numFeatures - 1) {
+                        t[i] = currentScore;
+                        currentScore = 0;
                     }
-                    completedSteps += sentences.length;
-                    postMessage({ command: 'progress', value: (completedSteps / totalSteps) * 100 });
                 }
+
+                let nextP = new Float32Array(numFeatures);
+                for (let idx = 0; idx < totalElements; idx++) {
+                    let i = Math.floor(idx / numFeatures);
+                    let j = idx % numFeatures;
+                    let v = fMatrix[idx] - means[j];
+                    if (sComp) v -= sComp.scores[i] * sComp.vector[j];
+                    nextP[j] += t[i] * v;
+                }
+                let npNorm = 0;
+                for(let j=0; j<numFeatures; j++) npNorm += nextP[j] * nextP[j];
+                npNorm = Math.sqrt(npNorm);
+                for(let j=0; j<numFeatures; j++) p[j] = nextP[j] / (npNorm || 1);
+            }
+            return { vector: p, scores: t };
+        }
+
+        const pc1 = computePCLinear(flatX);
+        const pc2 = computePCLinear(flatX, pc1);
+        globalPoints = Array.from({length: numSamples}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
+
+        updateStatus("Stage 3/3: Evaluating Asynchronous Math Matrix Engines...");
+
+        setTimeout(() => {
+            globalClusterMaps.highdim = runHighDimKMeansLinear(flatX, numSamples, numFeatures, K);
+            
+            setTimeout(() => {
+                globalClusterMaps.kmedoids = runKMedoidsLinear(flatDistanceMatrix, numSamples, K);
                 
-                model.isTrained = true;
-                postMessage({ command: 'trainingComplete', model });
+                setTimeout(() => {
+                    globalClusterMaps.gmm = runGMMLinear(globalPoints, K);
+                    
+                    setTimeout(() => {
+                        globalClusterMaps.fuzzy = runFuzzyCMeansLinear(globalPoints, K);
+
+                        const flatDeltas = new Float32Array(numSamples * numFeatures);
+                        for(let i = numFeatures; i < numSamples * numFeatures; i++) {
+                            flatDeltas[i] = flatX[i] - flatX[i - numFeatures];
+                        }
+                        globalClusterMaps.velocity = runHighDimKMeansLinear(flatDeltas, numSamples, numFeatures, K);
+
+                        renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
+                        document.getElementById('engineSelectors').style.display = 'block';
+                        
+                        const duration = (performance.now() - startTime).toFixed(1);
+                        const symmetryData = auditClusterSymmetry(globalPoints, globalClusterMaps[currentViewMode]);
+                        updateStatus(`Zero-Nest Pipeline Active | K=${K} | Tracked Elements: ${numSamples} | Matrix Evaluation Speed: ${duration}ms.${symmetryData}`);
+                    }, 15);
+                }, 15);
+            }, 15);
+        }, 15);
+    }, 40);
+}
+
+// ==========================================
+// 100% FLAT NON-NESTED CLUSTERING ENGINES
+// ==========================================
+
+function runHighDimKMeansLinear(flatX, n, f, k) {
+    let centroids = new Float32Array(k * f);
+    centroids.set(flatX.subarray(0, k * f));
+    let assignments = new Int32Array(n).fill(-1);
+    
+    for (let iter = 0; iter < 4; iter++) {
+        let totalPass = n * k;
+        let minDist = Infinity; let closest = 0; let dSq = 0;
+
+        for (let idx = 0; idx < totalPass; idx++) {
+            let i = Math.floor(idx / k);
+            let c = idx % k;
+            
+            let rowOffset = i * f;
+            let cOffset = c * f;
+            dSq = 0;
+            for (let j = 0; j < f; j++) {
+                const diff = flatX[rowOffset + j] - centroids[cOffset + j];
+                dSq += diff * diff;
             }
-
-            // --- Import/Load Logic ---
-            function loadModel(modelData) {
-                resetModel();
-                try {
-                    initializeNetwork(modelData.vocabulary, SNN_PARAMS.NUM_NEURONS);
-                    model.readoutWeights = modelData.readoutWeights;
-                    model.successorMap = new Map(modelData.successorMap.map(([key, value]) => [key, new Map(value)]));
-                    model.originalCaseMap = new Map(modelData.originalCaseMap.map(([key, value]) => [key, new Set(value)]));
-                    model.isTrained = true;
-                    postMessage({ command: 'importComplete', model });
-                } catch(e) { postMessage({ command: 'error', message: 'Failed to parse model file.' }); }
+            
+            if (dSq < minDist) { minDist = dSq; closest = c; }
+            
+            if (c === k - 1) {
+                assignments[i] = closest;
+                minDist = Infinity; closest = 0;
             }
-
-            // --- Prediction Logic ---
-            function predictAndSend(words, lastToken) {
-                if (!model.isTrained || words.length === 0) { postMessage({ command: 'predictionResult', prediction: "" }); return; }
-                const reservoirState = processSequence(words);
-                let bestWord = '', maxScore = -Infinity;
-                model.vocabulary.forEach(word => {
-                    const score = reservoirState.reduce((sum, spike, i) => sum + spike * model.readoutWeights[word][i], 0);
-                    if (score > maxScore) { maxScore = score; bestWord = word; }
-                });
-                let punctuation = '';
-                if (model.successorMap.has(bestWord)) { const p = [...model.successorMap.get(bestWord).entries()]; if(p.length > 0) { p.sort((a,b) => b[1] - a[1]); punctuation = p[0][0]; } }
-                const finalPrediction = postProcessPrediction(bestWord, punctuation, lastToken);
-                postMessage({ command: 'predictionResult', prediction: finalPrediction });
-            }
-            function postProcessPrediction(word, punctuation, lastToken) { if (!word) return ""; if (word === 'i') return 'I' + punctuation; const sentenceEnders = ['.', '!', '?']; if (!lastToken || sentenceEnders.includes(lastToken)) { const casings = model.originalCaseMap.get(word); const capitalized = [...casings].find(c => c[0] === c[0].toUpperCase()); return (capitalized || word) + punctuation; } return word + punctuation; }
-        `;
-
-        // --- PART 2: THE MAIN UI THREAD SCRIPT ---
-
-        const ui = {
-            chatInput: document.getElementById('chat-input'), trainButton: document.getElementById('train-button'), saveButton: document.getElementById('save-button'),
-            importInput: document.getElementById('import-input'), status: document.getElementById('status'), predictionText: document.getElementById('prediction-text'),
-            trainingData: document.getElementById('training-data'), progressContainer: document.getElementById('progress-container'), progressBar: document.getElementById('progress-bar'),
-            chatWindow: document.getElementById('chat-window'),
-        };
-
-        const TYPEWRITER_SPEED_MS = 80;
-        let typewriter = { animationId: null, fullPrediction: "" };
-        let trainedModelForSaving = null;
-
-        // --- Create the Web Worker from the string using a Blob ---
-        const blob = new Blob([workerCode], { type: 'application/javascript' });
-        const snnWorker = new Worker(URL.createObjectURL(blob));
-
-        // --- Listen for messages from the worker (this logic is unchanged) ---
-        snnWorker.onmessage = (e) => {
-            const { command, value, message, model, prediction } = e.data;
-            switch (command) {
-                case 'statusUpdate': ui.status.textContent = message; break;
-                case 'progress': ui.progressBar.style.width = `${value}%`; break;
-                case 'trainingComplete': trainedModelForSaving = model; trainingFinished(); break;
-                case 'predictionResult': if (prediction) { typewriter.fullPrediction = prediction; startPredictionAnimation(prediction); } else { typewriter.fullPrediction = ""; ui.predictionText.textContent = "..."; } break;
-                case 'importComplete': trainedModelForSaving = model; trainingFinished(); ui.status.textContent = 'Model successfully imported!'; addMessage("Model loaded from file. Ready to go!", "system-message"); break;
-                case 'error': alert(`Worker Error: ${message}`); setTrainingState(false); break;
-            }
-        };
+        }
         
-        // --- Event Listeners to send commands TO the worker (this logic is unchanged) ---
-        ui.trainButton.addEventListener('click', () => { setTrainingState(true); const trainingText = ui.trainingData.value; snnWorker.postMessage({ command: 'train', data: { trainingText } }); });
-        ui.importInput.addEventListener('change', (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const modelData = JSON.parse(e.target.result); setTrainingState(true); ui.status.textContent = "Importing model..."; snnWorker.postMessage({ command: 'loadModel', data: { modelData } }); } catch (error) { alert("Error: The selected file is not a valid JSON model file."); } }; reader.readAsText(file); ui.importInput.value = ''; });
-        ui.saveButton.addEventListener('click', () => { if (!trainedModelForSaving) { alert("Model data not available."); return; } const dataToSave = { readoutWeights: trainedModelForSaving.readoutWeights, vocabulary: trainedModelForSaving.vocabulary, successorMap: Array.from(trainedModelForSaving.successorMap.entries()).map(([key, value]) => [key, Array.from(value.entries())]), originalCaseMap: Array.from(trainedModelForSaving.originalCaseMap.entries()).map(([key, value]) => [key, Array.from(value)]), }; const blob = new Blob([JSON.stringify(dataToSave, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'snn_model.json'; a.click(); URL.revokeObjectURL(url); });
+        centroids.fill(0);
+        const counts = new Int32Array(k);
+        let rowOffset = 0;
+        for (let i = 0; i < n; i++) {
+            let c = assignments[i]; counts[c]++; let cOffset = c * f;
+            for(let j=0; j<f; j++) centroids[cOffset + j] += flatX[rowOffset + j];
+            rowOffset += f;
+        }
+        let cOffset = 0;
+        for (let c = 0; c < k; c++) {
+            if (counts[c] > 0) { for(let j=0; j<f; j++) centroids[cOffset + j] /= counts[c]; }
+            cOffset += f;
+        }
+    }
+    return assignments;
+}
+
+function runKMedoidsLinear(flatDistMatrix, n, k) {
+    let medoidIndices = Array.from({length: k}, (_, i) => Math.floor((n / k) * i));
+    let assignments = new Int32Array(n).fill(-1);
+    
+    for (let iter = 0; iter < 2; iter++) {
+        let totalPass = n * k;
+        let minDist = Infinity; let closest = 0;
         
-        // --- Real-time Prediction and UI management (this logic is unchanged) ---
-        function handleTyping() { stopPredictionAnimation(); const text = ui.chatInput.value; const tokens = text.match(/[\w']+|[.,!?;:"]|[\n]/g) || []; const words = tokens.map(t => t.toLowerCase()).filter(t => t.length > 0 && !/[.,!?;:"]/.test(t)); const lastToken = tokens.length > 0 ? tokens[tokens.length - 1] : null; if (words.length === 0) { typewriter.fullPrediction = ""; ui.predictionText.textContent = ""; return; } snnWorker.postMessage({ command: 'predict', data: { words, lastToken } }); }
-        ui.chatInput.addEventListener('input', handleTyping);
-        ui.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); acceptPrediction(); } else if (e.key === 'Enter' && ui.chatInput.value.trim() !== '') { addMessage(ui.chatInput.value.trim(), 'user-message'); ui.chatInput.value = ''; stopPredictionAnimation(); ui.predictionText.textContent = ''; typewriter.fullPrediction = ''; } });
-        function setTrainingState(isTraining) { ui.trainButton.disabled = isTraining; ui.importInput.parentElement.style.pointerEvents = isTraining ? 'none' : 'auto'; ui.importInput.parentElement.style.opacity = isTraining ? 0.5 : 1; ui.chatInput.disabled = isTraining; ui.saveButton.disabled = true; ui.progressContainer.style.display = isTraining ? 'block' : 'none'; ui.progressBar.style.width = '0%'; if (isTraining) { ui.status.textContent = 'Processing in background...'; stopPredictionAnimation(); } }
-        function trainingFinished() { setTrainingState(false); ui.saveButton.disabled = false; ui.chatInput.disabled = false; ui.status.textContent = 'Model ready. You can start typing.'; ui.chatInput.focus(); addMessage("Model is trained and ready!", "system-message"); }
-        function addMessage(text, className) { const d=document.createElement('div');d.classList.add('chat-message', className);d.textContent=`> ${text}`;ui.chatWindow.appendChild(d);ui.chatWindow.scrollTop=ui.chatWindow.scrollHeight; }
-        function startPredictionAnimation(text) { let i=0;ui.predictionText.textContent='';typewriter.animationId=setInterval(()=>{if(i<text.length){ui.predictionText.textContent+=text[i++];}else{stopPredictionAnimation();}},TYPEWRITER_SPEED_MS);}
-        function stopPredictionAnimation() { clearInterval(typewriter.animationId); typewriter.animationId = null; }
-        function acceptPrediction() { stopPredictionAnimation();if(typewriter.fullPrediction){const sp=ui.chatInput.value.endsWith(' ');if(ui.chatInput.value.length>0&&!sp){ui.chatInput.value+=' ';}ui.chatInput.value+=typewriter.fullPrediction;handleTyping();}}
-    </script>
+        for (let idx = 0; idx < totalPass; idx++) {
+            let i = Math.floor(idx / k);
+            let m = idx % k;
+            let d = flatDistMatrix[i * n + medoidIndices[m]];
+            if (d < minDist) { minDist = d; closest = m; }
+            if (m === k - 1) { assignments[i] = closest; minDist = Infinity; closest = 0; }
+        }
+
+        for (let m = 0; m < k; m++) {
+            let clusterPoints = [];
+            for(let i=0; i<n; i++) if(assignments[i] === m) clusterPoints.push(i);
+            if (clusterPoints.length === 0) continue;
+            
+            let bestMedoid = medoidIndices[m], minTotalCost = Infinity;
+            let checkSample = clusterPoints.length > 15 ? clusterPoints.filter((_, idx) => idx % Math.ceil(clusterPoints.length / 15) === 0) : clusterPoints;
+            
+            for (let p of checkSample) {
+                let currentCost = 0; const pOffset = p * n;
+                for (let cP of checkSample) currentCost += flatDistMatrix[pOffset + cP];
+                if (currentCost < minTotalCost) { minTotalCost = currentCost; bestMedoid = p; }
+            }
+            medoidIndices[m] = bestMedoid;
+        }
+    }
+    return assignments;
+}
+
+function runGMMLinear(pts, k) {
+    const n = pts.length;
+    let weights = new Float32Array(k).fill(1 / k);
+    let means = Array.from({length: k}, (_, i) => new Float32Array(pts[Math.floor((n / k) * i)]));
+    let covars = Array.from({length: k}, () => new Float32Array([1.0, 0.0, 0.0, 1.0])); 
+    let responsibilities = Array.from({length: n}, () => new Float32Array(k));
+
+    for (let iter = 0; iter < 2; iter++) {
+        let totalEPass = n * k;
+        let rowSum = 0;
+
+        for (let idx = 0; idx < totalEPass; idx++) {
+            let i = Math.floor(idx / k);
+            let c = idx % k;
+            
+            let dx = pts[i][0] - means[c][0];
+            let dy = pts[i][1] - means[c][1];
+            let det = covars[c][0] * covars[c][3] - covars[c][1] * covars[c][2];
+            if (Math.abs(det) < 1e-4) det = 1e-4;
+            
+            let inv0 = covars[c][3] / det, inv1 = -covars[c][1] / det;
+            let inv2 = -covars[c][2] / det, inv3 = covars[c][0] / det;
+            let expTerm = -0.5 * (dx * (dx * inv0 + dy * inv2) + dy * (dx * inv1 + dy * inv3));
+            let prob = (1 / (2 * Math.PI * Math.sqrt(Math.abs(det)))) * Math.exp(expTerm);
+            
+            responsibilities[i][c] = weights[c] * prob;
+            rowSum += responsibilities[i][c];
+            
+            if (c === k - 1) {
+                for (let cl = 0; cl < k; cl++) responsibilities[i][cl] /= (rowSum || 1);
+                rowSum = 0;
+            }
+        }
+
+        for (let c = 0; c < k; c++) {
+            let sumResp = 0; let nm0 = 0, nm1 = 0;
+            for (let i = 0; i < n; i++) {
+                let r = responsibilities[i][c]; sumResp += r;
+                nm0 += r * pts[i][0]; nm1 += r * pts[i][1];
+            }
+            if (sumResp > 1e-4) {
+                means[c][0] = nm0 / sumResp; means[c][1] = nm1 / sumResp;
+                let c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+                for (let i = 0; i < n; i++) {
+                    let r = responsibilities[i][c];
+                    let dx = pts[i][0] - means[c][0]; let dy = pts[i][1] - means[c][1];
+                    c0 += r * dx * dx; c1 += r * dx * dy; c2 += r * dy * dx; c3 += r * dy * dy;
+                }
+                covars[c][0] = c0 / sumResp + 1e-3; covars[c][1] = c1 / sumResp;
+                covars[c][2] = c2 / sumResp;        covars[c][3] = c3 / sumResp + 1e-3;
+                weights[c] = sumResp / n;
+            }
+        }
+    }
+
+    let assignments = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+        let maxVal = -1, bestC = 0;
+        for (let c = 0; c < k; c++) {
+            if (responsibilities[i][c] > maxVal) { maxVal = responsibilities[i][c]; bestC = c; }
+        }
+        assignments[i] = bestC;
+    }
+    return assignments;
+}
+
+function runFuzzyCMeansLinear(pts, k) {
+    const n = pts.length;
+    let u = Array.from({length: n}, () => new Float32Array(k));
+    for (let i = 0; i < n; i++) {
+        let sum = 0;
+        for (let c = 0; c < k; c++) { u[i][c] = Math.random(); sum += u[i][c]; }
+        for (let c = 0; c < k; c++) u[i][c] /= sum;
+    }
+
+    let centers = Array.from({length: k}, () => new Float32Array(2));
+    const m = 2.0;
+
+    for (let iter = 0; iter < 2; iter++) {
+        for (let c = 0; c < k; c++) {
+            let numX = 0, numY = 0, den = 0;
+            for (let i = 0; i < n; i++) {
+                let um = Math.pow(u[i][c], m);
+                numX += um * pts[i][0]; numY += um * pts[i][1]; den += um;
+            }
+            centers[c][0] = numX / (den || 1); centers[c][1] = numY / (den || 1);
+        }
+
+        let totalFPass = n * k;
+        for (let idx = 0; idx < totalFPass; idx++) {
+            let i = Math.floor(idx / k);
+            let c = idx % k;
+            
+            let sum = 0;
+            let di = Math.sqrt((pts[i][0] - centers[c][0])**2 + (pts[i][1] - centers[c][1])**2) || 1e-4;
+            for (let j = 0; j < k; j++) {
+                let dj = Math.sqrt((pts[i][0] - centers[j][0])**2 + (pts[i][1] - centers[j][1])**2) || 1e-4;
+                sum += Math.pow(di / dj, 2 / (m - 1));
+            }
+            u[i][c] = 1 / (sum || 1);
+        }
+    }
+
+    let assignments = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+        let maxVal = -1, bestC = 0;
+        for (let c = 0; c < k; c++) { if (u[i][c] > maxVal) { maxVal = u[i][c]; bestC = c; } }
+        assignments[i] = bestC;
+    }
+    return assignments;
+}
+
+function auditClusterSymmetry(points, assignments) {
+    let minX = Infinity, maxX = -Infinity;
+    for (let i = 0; i < points.length; i++) {
+        if (points[i][0] < minX) minX = points[i][0]; if (points[i][0] > maxX) maxX = points[i][0];
+    }
+    const midX = minX + (maxX - minX) / 2;
+    const uniqueClusters = [...new Set(assignments)].filter(c => c !== -1);
+    let symmetryReport = " | Symmetry Balance: ";
+    uniqueClusters.forEach(cId => {
+        let leftCount = 0, rightCount = 0;
+        for (let i = 0; i < points.length; i++) {
+            if (assignments[i] === cId) { if (points[i][0] < midX) leftCount++; else rightCount++; }
+        }
+        const ratio = Math.min(leftCount, rightCount) / (Math.max(leftCount, rightCount) || 1);
+        symmetryReport += `C${cId}: ${(ratio * 100).toFixed(0)}% `;
+    });
+    return symmetryReport;
+}
+
+function renderCanvasPlot(points, assignments) {
+    const canvas = document.getElementById('plotCanvas'); const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1; const rect = canvas.parentElement.getBoundingClientRect();
+    
+    canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr); const w = rect.width, h = rect.height;
+    ctx.fillStyle = '#0b0f19'; ctx.fillRect(0, 0, w, h);
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for(let i=0; i<points.length; i++) {
+        if (points[i][0] < minX) minX = points[i][0]; if (points[i][0] > maxX) maxX = points[i][0];
+        if (points[i][1] < minY) minY = points[i][1]; if (points[i][1] > maxY) maxY = points[i][1];
+    }
+    const pad = 40, rx = (maxX - minX) || 1, ry = (maxY - minY) || 1;
+    const themeColors = ['#00ff66', '#00e5ff', '#ff007f', '#9d00ff', '#ffb700', '#ff3333', '#ffffff'];
+    
+    for(let i=0; i<points.length; i++) {
+        const cx = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
+        const cy = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
+        ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = assignments[i] === -1 ? '#334155' : themeColors[assignments[i] % themeColors.length];
+        ctx.fill();
+    }
+}
+</script>
 </body>
 </html>
