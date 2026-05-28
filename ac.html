@@ -68,14 +68,14 @@
 
 <div class="app-container">
     <header>
-        <h2>Kinematic Distance Explorer (Linear Space Architecture)</h2>
-        <div id="statusMsg" class="status">System standing by. Load high-density dataset.</div>
+        <h2>Kinematic Distance Explorer (Batch Vector Architecture)</h2>
+        <div id="statusMsg" class="status">Engine online. Awaiting high-density tracking arrays.</div>
     </header>
     
     <div class="main-content">
         <div class="control-panel">
             <div class="input-group">
-                <label class="input-label">Option A: Upload Large JSON</label>
+                <label class="input-label">Option A: Upload High-Density JSON</label>
                 <input type="file" id="fileInput" accept=".json" />
             </div>
             <div class="input-group">
@@ -159,7 +159,6 @@ function recomputeAndRender() {
         const augmentedFeatures = f * 2;
         const flatKinematicMatrix = new Float32Array(n * augmentedFeatures);
         
-        // Generate Kinematic Coordinates on-the-fly
         for (let i = 0; i < n; i++) {
             const rowOffset = i * augmentedFeatures;
             const prev = i === 0 ? globalX[0] : globalX[i - 1];
@@ -171,7 +170,6 @@ function recomputeAndRender() {
             }
         }
 
-        // Fast Linear O(N) PCA projection for spatial plotting
         const means = new Float32Array(f);
         for (let i = 0; i < n * f; i++) means[i % f] += globalX[Math.floor(i / f)][i % f];
         for (let j = 0; j < f; j++) means[j] /= n;
@@ -208,21 +206,16 @@ function recomputeAndRender() {
         updateStatus("Executing high-performance inline cluster passes...");
 
         setTimeout(() => {
-            // Executing allocation-free algorithms running in O(N) memory space
             globalClusterMaps.kmeans = runLinearKMeans(flatKinematicMatrix, n, augmentedFeatures, targetK);
             globalClusterMaps.gmm = runLinearGMM(flatKinematicMatrix, n, augmentedFeatures, targetK);
             globalClusterMaps.fuzzy = runLinearFuzzyCMeans(flatKinematicMatrix, n, augmentedFeatures, targetK);
 
             renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
             document.getElementById('engineSelectors').style.display = 'block';
-            updateStatus(`Evaluation Complete | Total Datapoints Scaled: ${n} | Compute Frame: ${(performance.now() - startTime).toFixed(1)}ms`);
+            updateStatus(`Evaluation Complete | Scaled Points: ${n} | Processing Frame: ${(performance.now() - startTime).toFixed(1)}ms`);
         }, 10);
     }, 20);
 }
-
-// ==========================================
-// HIGH PERFORMANCE LINEAR O(N) ALGORITHMS
-// ==========================================
 
 function runLinearKMeans(flatMatrix, n, f, k) {
     let centroids = new Float32Array(k * f);
@@ -254,7 +247,6 @@ function runLinearGMM(flatMatrix, n, f, k) {
     
     for(let c=0; c<k; c++) means.set(flatMatrix.subarray(Math.floor(n/k)*c*f, (Math.floor(n/k)*c+1)*f), c*f);
 
-    // Optimized Diagonal Gaussian Expectation Pass
     for (let iter = 0; iter < 4; iter++) {
         for (let i = 0; i < n; i++) {
             let rowOffset = i * f, maxProb = -Infinity, bestCluster = 0;
@@ -307,28 +299,43 @@ function renderCanvasPlot(points, assignments) {
     const pad = 40, rx = (maxX - minX) || 1, ry = (maxY - minY) || 1;
     const neonPalette = ['#00ff66', '#00e5ff', '#ff007f', '#9d00ff', '#ffb700', '#ff3333', '#00f5d4', '#70e000', '#ff70a6'];
     
-    // Low opacity structural rendering paths for dense data arrays
-    ctx.lineWidth = 0.8;
+    // BATCH DRAWING PASS 1: Single path buffer for continuous trajectory lines
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(0, 255, 102, 0.12)';
     for (let i = 1; i < points.length; i++) {
-        const x0 = pad + ((points[i-1][0] - minX) / rx) * (w - pad * 2);
-        const y0 = h - (pad + ((points[i-1][1] - minY) / ry) * (h - pad * 2));
-        const x1 = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
-        const y1 = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
-        if (Math.abs(points[i][0] - points[i-1][0]) < rx * 0.15) {
-            ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-            ctx.strokeStyle = assignments[i] === assignments[i-1] ? `rgba(0, 255, 102, 0.15)` : 'rgba(30, 41, 59, 0.05)';
-            ctx.stroke();
+        if (assignments[i] === assignments[i-1]) {
+            const x0 = pad + ((points[i-1][0] - minX) / rx) * (w - pad * 2);
+            const y0 = h - (pad + ((points[i-1][1] - minY) / ry) * (h - pad * 2));
+            const x1 = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
+            const y1 = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
+            if (Math.abs(points[i][0] - points[i-1][0]) < rx * 0.15) {
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+            }
         }
     }
+    ctx.stroke();
 
-    // High fidelity tracking nodes
-    const ptRad = points.length > 10000 ? 1.0 : 2.0;
-    for(let i=0; i<points.length; i++) {
-        const cx = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
-        const cy = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
-        ctx.beginPath(); ctx.arc(cx, cy, ptRad, 0, 2 * Math.PI);
-        ctx.fillStyle = neonPalette[assignments[i] % neonPalette.length];
-        ctx.fill();
+    // BATCH DRAWING PASS 2: Structural bucketing by color to avoid sequential context switching
+    const bucketedPoints = Array.from({ length: neonPalette.length }, () => []);
+    for (let i = 0; i < points.length; i++) {
+        const clusterId = assignments[i] % neonPalette.length;
+        bucketedPoints[clusterId].push(points[i]);
+    }
+
+    // High fidelity blitting via flat rectangles instead of vector circle geometry arcs
+    const side = points.length > 10000 ? 1.5 : 2.5;
+    const offset = side / 2;
+    for (let c = 0; c < bucketedPoints.length; c++) {
+        const pts = bucketedPoints[c];
+        if (pts.length === 0) continue;
+        ctx.fillStyle = neonPalette[c];
+        for (let i = 0; i < pts.length; i++) {
+            const cx = pad + ((pts[i][0] - minX) / rx) * (w - pad * 2);
+            const cy = h - (pad + ((pts[i][1] - minY) / ry) * (h - pad * 2));
+            ctx.fillRect(cx - offset, cy - offset, side, side);
+        }
     }
 }
 </script>
