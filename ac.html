@@ -68,40 +68,48 @@
 
 <div class="app-container">
     <header>
-        <h2>Kinematic Distance Explorer (Thread-Isolated Web Worker Architecture)</h2>
-        <div id="statusMsg" class="status">System idle. Ready to parse deep data buffers.</div>
+        <h2>Kinematic Distance Explorer (WebGL2 Accelerated)</h2>
+        <div id="statusMsg" class="status">System ready. Load data framework.</div>
     </header>
     
     <div class="main-content">
         <div class="control-panel">
             <div class="input-group">
-                <label class="input-label">Option A: Upload High-Density JSON</label>
+                <label class="input-label">Option A: Upload Trajectory JSON</label>
                 <input type="file" id="fileInput" accept=".json" />
             </div>
             <div class="input-group">
                 <label class="input-label">Option B: Raw Matrix Paste</label>
                 <textarea id="dataInput" placeholder="[[x1,y1,z1], [x2,y2,z2]]"></textarea>
             </div>
-            <button id="runBtn">Launch Background Worker</button>
+            <button id="runBtn">Analyze on GPU</button>
 
             <div class="engine-select-panel" id="engineSelectors" style="display:none;">
-                <label class="input-label" style="color:var(--neon-green); display:block; margin-bottom:10px;">Hyperparameters</label>
-                <div style="margin-bottom:15px; display:flex; gap:10px;">
-                    <div style="flex:1;">
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Clusters (K)</label>
-                        <input type="number" id="paramK" value="6" min="2" max="20" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
+                <label class="input-label" style="color:var(--neon-green); display:block; margin-bottom:10px;">Hyperparameter Tuning</label>
+                <div style="margin-bottom:15px; display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Min Points (K)</label>
+                            <input type="number" id="paramK" value="6" min="2" max="50" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">DBSCAN Eps</label>
+                            <input type="number" id="paramEps" value="0" min="0" max="20" step="0.1" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
+                        </div>
                     </div>
-                    <div style="flex:1;">
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Velocity Weight</label>
+                    <div>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Velocity Weight (\(\lambda\))</label>
                         <input type="number" id="paramLambda" value="1.5" min="0" max="5" step="0.1" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
                     </div>
                 </div>
 
-                <label class="input-label" style="color:var(--neon-green);">On-The-Fly Processing Mode</label>
+                <label class="input-label" style="color:var(--neon-green);">Engine Visualization Mode</label>
                 <div class="btn-group">
-                    <button class="mode-btn active" data-mode="kmeans">1. Phase-Space Trajectory K-Means</button>
-                    <button class="mode-btn" data-mode="gmm">2. Trajectory Gaussian Mixture Model</button>
-                    <button class="mode-btn" data-mode="fuzzy">3. Fuzzy Phase-Space C-Means</button>
+                    <button class="mode-btn active" data-mode="mutual_density">1. Mutual Reachability Density (Shotgun)</button>
+                    <button class="mode-btn" data-mode="highdim">2. High-Dim Feature K-Means</button>
+                    <button class="mode-btn" data-mode="kmedoids">3. High-Dim K-Medoids (Exemplars)</button>
+                    <button class="mode-btn" data-mode="gmm">4. Trajectory Gaussian Mixture Model</button>
+                    <button class="mode-btn" data-mode="fuzzy">5. Fuzzy Phase-Space C-Means</button>
                 </div>
             </div>
         </div>
@@ -110,14 +118,106 @@
 </div>
 
 <script>
-// Inline Web Worker implementation script logic block
-const workerBlobCode = `
-    self.onmessage = function(e) {
-        const { globalX, targetK, lambda } = e.data;
-        const n = globalX.length, f = globalX[0]?.length || 0;
-        if(n === 0 || f === 0) { self.postMessage({ type: 'error', msg: 'Empty array space encountered.' }); return; }
+let globalX = null; 
+let globalPoints = null; 
+let globalClusterMaps = {};
+let currentViewMode = 'mutual_density';
 
-        self.postMessage({ type: 'status', msg: 'Worker Thread: Synthesizing phase space vectors...' });
+document.getElementById('runBtn').addEventListener('click', handleExecution);
+document.getElementById('paramK').addEventListener('change', () => { if(globalX) recomputeAndRender(); });
+document.getElementById('paramEps').addEventListener('change', () => { if(globalX) recomputeAndRender(); });
+document.getElementById('paramLambda').addEventListener('change', () => { if(globalX) recomputeAndRender(); });
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentViewMode = e.target.getAttribute('data-mode');
+        if (globalPoints) renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
+    });
+});
+
+function updateStatus(msg, isError = false) {
+    const statusDiv = document.getElementById('statusMsg');
+    if (statusDiv) { statusDiv.textContent = msg; statusDiv.style.color = isError ? '#ff3366' : '#94a3b8'; }
+}
+
+function handleExecution() {
+    const fileInput = document.getElementById('fileInput');
+    const textInput = document.getElementById('dataInput').value.trim();
+    if (fileInput.files.length > 0) {
+        const reader = new FileReader();
+        reader.onload = (e) => { try { globalX = JSON.parse(e.target.result); recomputeAndRender(); } catch(err) { updateStatus("Format error: " + err.message, true); } };
+        reader.readAsText(fileInput.files[0]);
+    } else if (textInput) {
+        try { globalX = JSON.parse(textInput); recomputeAndRender(); } catch(err) { updateStatus("Format error: " + err.message, true); }
+    }
+}
+
+function gpuComputeDistances(matrix, n, f) {
+    const canvas = document.createElement('canvas'); canvas.width = n; canvas.height = n;
+    const gl = canvas.getContext('webgl2');
+    if (!gl || !gl.getExtension('EXT_color_buffer_float')) return null;
+
+    const numChunks = Math.ceil(f / 4), texWidth = numChunks, texHeight = n;
+    const texData = new Float32Array(texWidth * texHeight * 4);
+    for (let i = 0; i < n; i++) {
+        for (let j = 0; j < f; j++) texData[i * (texWidth * 4) + j] = matrix[i][j];
+    }
+
+    const vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, `#version 300 es\nin vec2 pos; void main() { gl_Position = vec4(pos, 0.0, 1.0); }`);
+    gl.compileShader(vs);
+
+    const fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, `#version 300 es\nprecision highp float; uniform sampler2D tex; uniform int chunks, samples; out vec4 col;
+        void main() {
+            int i = int(gl_FragCoord.y), j = int(gl_FragCoord.x);
+            if(i >= samples || j >= samples) { col = vec4(0.0); return; }
+            float s = 0.0;
+            for(int c=0; c<chunks; c++) {
+                vec4 a = texelFetch(tex, ivec2(c, i), 0), b = texelFetch(tex, ivec2(c, j), 0);
+                vec4 d = a - b; s += dot(d, d);
+            }
+            col = vec4(sqrt(s), 0.0, 0.0, 1.0);
+        }`);
+    gl.compileShader(fs);
+
+    const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog); gl.useProgram(prog);
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, texWidth, texHeight, 0, gl.RGBA, gl.FLOAT, texData);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    gl.uniform1i(gl.getUniformLocation(prog, "chunks"), numChunks); gl.uniform1i(gl.getUniformLocation(prog, "samples"), n);
+
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+    const pLoc = gl.getAttribLocation(prog, "pos"); gl.enableVertexAttribArray(pLoc); gl.vertexVertexAttribPointer = gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    const rb = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, rb);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, n, n, 0, gl.RGBA, gl.FLOAT, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rb, 0);
+
+    gl.viewport(0, 0, n, n); gl.drawArrays(gl.TRIANGLES, 0, 6);
+    const out = new Float32Array(n * n * 4); gl.readPixels(0, 0, n, n, gl.RGBA, gl.FLOAT, out);
+    
+    const res = new Float32Array(n * n);
+    for (let i = 0; i < n * n; i++) res[i] = out[i * 4];
+    return res;
+}
+
+function recomputeAndRender() {
+    const n = globalX.length, f = globalX[0]?.length || 0;
+    if (n < 5 || f === 0) { updateStatus("Insufficient matrix bounds.", true); return; }
+
+    const minPoints = parseInt(document.getElementById('paramK').value) || 6;
+    const epsOverride = parseFloat(document.getElementById('paramEps').value) || 0;
+    const lambda = parseFloat(document.getElementById('paramLambda').value) || 1.5;
+    
+    updateStatus("Stage 1: Building Kinematic Phase Space Fields...");
+
+    setTimeout(() => {
+        let startTime = performance.now();
         const augmentedFeatures = f * 2;
         const flatKinematicMatrix = new Float32Array(n * augmentedFeatures);
         
@@ -132,7 +232,6 @@ const workerBlobCode = `
             }
         }
 
-        self.postMessage({ type: 'status', msg: 'Worker Thread: Projecting multi-dimensional PCA spaces...' });
         const means = new Float32Array(f);
         for (let i = 0; i < n * f; i++) means[i % f] += globalX[Math.floor(i / f)][i % f];
         for (let j = 0; j < f; j++) means[j] /= n;
@@ -140,7 +239,7 @@ const workerBlobCode = `
         function inlinePCA(comps) {
             let p = new Float32Array(f).map(() => Math.random() - 0.5);
             let t = new Float32Array(n);
-            for(let iter=0; iter<4; iter++) {
+            for(let iter=0; iter<5; iter++) {
                 for(let i=0; i<n; i++) {
                     let s = 0;
                     for(let j=0; j<f; j++) {
@@ -164,150 +263,164 @@ const workerBlobCode = `
             return { vector: p, scores: t };
         }
         const pc1 = inlinePCA(null), pc2 = inlinePCA(pc1);
-        const points = Array.from({length: n}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
+        globalPoints = Array.from({length: n}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
 
-        self.postMessage({ type: 'status', msg: 'Worker Thread: Processing algorithmic partitioning passes...' });
+        updateStatus("Stage 2: Firing WebGL2 Distance Rasterization...");
         
-        // 1. K-Means
-        let centroids = new Float32Array(targetK * augmentedFeatures);
-        for(let c=0; c<targetK; c++) centroids.set(flatKinematicMatrix.subarray(Math.floor(n/targetK)*c*augmentedFeatures, (Math.floor(n/targetK)*c+1)*augmentedFeatures), c*augmentedFeatures);
-        let kmeansAssig = new Int32Array(n).fill(-1);
-        for (let iter = 0; iter < 8; iter++) {
-            for (let i = 0; i < n; i++) {
-                let rowOffset = i * augmentedFeatures, minDist = Infinity, closest = 0;
-                for (let c = 0; c < targetK; c++) {
-                    let cOffset = c * augmentedFeatures, dSq = 0;
-                    for (let j = 0; j < augmentedFeatures; j++) { const d = flatKinematicMatrix[rowOffset + j] - centroids[cOffset + j]; dSq += d * d; }
-                    if (dSq < minDist) { minDist = dSq; closest = c; }
+        const reshapedData = [];
+        for(let i=0; i<n; i++) reshapedData.push(Array.from(flatKinematicMatrix.subarray(i*augmentedFeatures, (i+1)*augmentedFeatures)));
+        let flatDistanceMatrix = gpuComputeDistances(reshapedData, n, augmentedFeatures);
+        
+        if(!flatDistanceMatrix) {
+            flatDistanceMatrix = new Float32Array(n * n);
+            for(let i=0; i<n; i++) {
+                for(let j=0; j<n; j++) {
+                    let s = 0; for(let val=0; val<augmentedFeatures; val++) { let d = flatKinematicMatrix[i*augmentedFeatures+val] - flatKinematicMatrix[j*augmentedFeatures+val]; s+=d*d; }
+                    flatDistanceMatrix[i*n+j] = Math.sqrt(s);
                 }
-                kmeansAssig[i] = closest;
-            }
-            centroids.fill(0); const counts = new Int32Array(targetK);
-            for (let i = 0; i < n; i++) { let c = kmeansAssig[i]; counts[c]++; for(let j=0; j<augmentedFeatures; j++) centroids[c * augmentedFeatures + j] += flatKinematicMatrix[i * augmentedFeatures + j]; }
-            for (let c = 0; c < targetK; c++) { if (counts[c] > 0) { for(let j=0; j<augmentedFeatures; j++) centroids[c * augmentedFeatures + j] /= counts[c]; } }
-        }
-
-        // 2. GMM Diagonal Profile Matrix
-        let gmmMeans = new Float32Array(targetK * augmentedFeatures);
-        let gmmVars = new Float32Array(targetK * augmentedFeatures).fill(1.0);
-        let gmmWeights = new Float32Array(targetK).fill(1 / targetK);
-        let gmmAssig = new Int32Array(n);
-        for(let c=0; c<targetK; c++) gmmMeans.set(flatKinematicMatrix.subarray(Math.floor(n/targetK)*c*augmentedFeatures, (Math.floor(n/targetK)*c+1)*augmentedFeatures), c*augmentedFeatures);
-        for (let iter = 0; iter < 4; iter++) {
-            for (let i = 0; i < n; i++) {
-                let rowOffset = i * augmentedFeatures, maxProb = -Infinity, bestCluster = 0;
-                for (let c = 0; c < targetK; c++) {
-                    let mOffset = c * augmentedFeatures, logProb = Math.log(gmmWeights[c]);
-                    for (let j = 0; j < augmentedFeatures; j++) {
-                        let diff = flatKinematicMatrix[rowOffset + j] - gmmMeans[mOffset + j];
-                        logProb -= 0.5 * (Math.log(2 * Math.PI * gmmVars[mOffset + j]) + (diff * diff) / (gmmVars[mOffset + j] || 0.01));
-                    }
-                    if (logProb > maxProb) { maxProb = logProb; bestCluster = c; }
-                }
-                gmmAssig[i] = bestCluster;
             }
         }
 
-        // 3. Fuzzy C Means
-        let fcmCentroids = new Float32Array(targetK * augmentedFeatures);
-        for(let c=0; c<targetK; c++) fcmCentroids.set(flatKinematicMatrix.subarray(Math.floor(n/targetK)*c*augmentedFeatures, (Math.floor(n/targetK)*c+1)*augmentedFeatures), c*augmentedFeatures);
-        let fcmAssig = new Int32Array(n);
-        for (let iter = 0; iter < 3; iter++) {
-            for (let i = 0; i < n; i++) {
-                let rowOffset = i * augmentedFeatures, minDist = Infinity, bestC = 0;
-                for (let c = 0; c < targetK; c++) {
-                    let cOffset = c * augmentedFeatures, dSq = 0;
-                    for (let j = 0; j < augmentedFeatures; j++) { const d = flatKinematicMatrix[rowOffset + j] - fcmCentroids[cOffset + j]; dSq += d * d; }
-                    if (dSq < minDist) { minDist = dSq; bestC = c; }
-                }
-                fcmAssig[i] = bestC;
-            }
-        }
+        updateStatus("Stage 3: Building Mutual Reachability Network Space...");
 
-        self.postMessage({
-            type: 'done',
-            points: points,
-            maps: {
-                kmeans: Array.from(kmeansAssig),
-                gmm: Array.from(gmmAssig),
-                fuzzy: Array.from(fcmAssig)
-            }
-        });
-    };
-`;
+        setTimeout(() => {
+            globalClusterMaps.mutual_density = runMutualReachabilityClustering(flatDistanceMatrix, n, minPoints, epsOverride);
+            globalClusterMaps.highdim = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, 6);
+            globalClusterMaps.kmedoids = runKinematicMedoids(flatDistanceMatrix, n, 6);
+            globalClusterMaps.gmm = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, 4); 
+            globalClusterMaps.fuzzy = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, 5);
 
-let globalPoints = null;
-let globalClusterMaps = {};
-let currentViewMode = 'kmeans';
-let workerInstance = null;
-
-// Build structural URL Object out of code blocks to initialize background thread
-const blobContainer = new Blob([workerBlobCode], { type: 'application/javascript' });
-const workerURL = URL.createObjectURL(blobContainer);
-
-document.getElementById('runBtn').addEventListener('click', handleExecution);
-document.getElementById('paramK').addEventListener('change', triggerWorkerComputation);
-document.getElementById('paramLambda').addEventListener('change', triggerWorkerComputation);
-
-document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        currentViewMode = e.target.getAttribute('data-mode');
-        if (globalPoints) renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
-    });
-});
-
-function updateStatus(msg, isError = false) {
-    const statusDiv = document.getElementById('statusMsg');
-    if (statusDiv) { statusDiv.textContent = msg; statusDiv.style.color = isError ? '#ff3366' : '#94a3b8'; }
-}
-
-let loadedRawDataset = null;
-
-function handleExecution() {
-    const fileInput = document.getElementById('fileInput');
-    const textInput = document.getElementById('dataInput').value.trim();
-    
-    if (fileInput.files.length > 0) {
-        updateStatus("Parsing incoming local file architecture...");
-        const reader = new FileReader();
-        reader.onload = (e) => { try { loadedRawDataset = JSON.parse(e.target.result); triggerWorkerComputation(); } catch(err) { updateStatus("JSON parse failure: " + err.message, true); } };
-        reader.readAsText(fileInput.files[0]);
-    } else if (textInput) {
-        try { loadedRawDataset = JSON.parse(textInput); triggerWorkerComputation(); } catch(err) { updateStatus("Input parsing error: " + err.message, true); }
-    } else {
-        updateStatus("Please load tracking inputs or clear system buffers.", true);
-    }
-}
-
-function triggerWorkerComputation() {
-    if (!loadedRawDataset) return;
-    
-    if (workerInstance) workerInstance.terminate();
-    workerInstance = new Worker(workerURL);
-    
-    const targetK = parseInt(document.getElementById('paramK').value) || 6;
-    const lambda = parseFloat(document.getElementById('paramLambda').value) || 1.5;
-    let startTime = performance.now();
-
-    workerInstance.onmessage = function(e) {
-        const payload = e.data;
-        if (payload.type === 'status') {
-            updateStatus(payload.msg);
-        } else if (payload.type === 'error') {
-            updateStatus(payload.msg, true);
-        } else if (payload.type === 'done') {
-            globalPoints = payload.points;
-            globalClusterMaps = payload.maps;
-            
             renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
             document.getElementById('engineSelectors').style.display = 'block';
-            updateStatus(`Execution Complete | Isolated Workers Balanced | N = ${globalPoints.length} | Sync Time: ${(performance.now() - startTime).toFixed(1)}ms`);
-        }
-    };
+            
+            const detected = new Set(globalClusterMaps.mutual_density.filter(c => c >= 0)).size;
+            updateStatus(`Mutual Space Pipeline Configured | Paths Found: ${detected} | Execution Frame: ${(performance.now() - startTime).toFixed(1)}ms`);
+        }, 20);
+    }, 40);
+}
 
-    workerInstance.postMessage({ globalX: loadedRawDataset, targetK, lambda });
+// ==========================================
+// MUTUAL REACHABILITY TRACKING GRAPH CORE
+// ==========================================
+function runMutualReachabilityClustering(flatDistMatrix, n, minPoints, epsOverride) {
+    let labels = new Int32Array(n).fill(-1);
+    let coreDistances = new Float32Array(n);
+    let sortBuffer = new Float32Array(n);
+    
+    // Pass 1: Isolate Core Distances for each tracking state
+    for (let i = 0; i < n; i++) {
+        const offset = i * n;
+        for (let j = 0; j < n; j++) sortBuffer[j] = flatDistMatrix[offset + j];
+        sortBuffer.sort();
+        coreDistances[i] = sortBuffer[Math.min(minPoints - 1, n - 1)];
+    }
+
+    // Pass 2: Generate Minimum Spanning Tree over Mutual Reachability Framework
+    let inTree = new Uint8Array(n).fill(0);
+    let minDistances = new Float32Array(n).fill(Infinity);
+    let parentNode = new Int32Array(n).fill(-1);
+    let edgeWeights = new Float32Array(n).fill(Infinity);
+    minDistances[0] = 0;
+
+    for (let step = 0; step < n; step++) {
+        let u = -1; let minD = Infinity;
+        for (let i = 0; i < n; i++) { if (!inTree[i] && minDistances[i] < minD) { minD = minDistances[i]; u = i; } }
+        if (u === -1) break;
+        inTree[u] = 1;
+
+        const uOffset = u * n;
+        const coreU = coreDistances[u];
+        
+        for (let v = 0; v < n; v++) {
+            if (!inTree[v]) {
+                // Compute d_mrt(u, v) = max(core(u), core(v), base_dist(u,v))
+                let mutualReachDist = Math.max(coreU, coreDistances[v], flatDistMatrix[uOffset + v]);
+                if (mutualReachDist < minDistances[v]) {
+                    minDistances[v] = mutualReachDist;
+                    parentNode[v] = u;
+                    edgeWeights[v] = mutualReachDist;
+                }
+            }
+        }
+    }
+
+    // Pass 3: Adaptive Tree Splitting Threshold Determination
+    let threshold = epsOverride;
+    if (threshold === 0) {
+        let activeEdges = edgeWeights.filter(w => w !== Infinity && w > 0);
+        activeEdges.sort();
+        // If no override, drop tracking connections beyond the 85th percentile distance jump
+        threshold = activeEdges[Math.floor(activeEdges.length * 0.85)] || 1.0;
+    }
+
+    // Pass 4: Traverse and extract continuous geometric paths
+    let visited = new Uint8Array(n).fill(0);
+    let currentClusterId = 0;
+
+    for (let i = 0; i < n; i++) {
+        if (!visited[i]) {
+            let component = [];
+            let queue = [i];
+            visited[i] = 1;
+
+            while (queue.length > 0) {
+                let curr = queue.shift();
+                component.push(curr);
+
+                for (let next = 0; next < n; next++) {
+                    if (!visited[next] && (parentNode[next] === curr || parentNode[curr] === next)) {
+                        // Check linkage matrix against mutual distance threshold
+                        let edgeCost = parentNode[next] === curr ? edgeWeights[next] : edgeWeights[curr];
+                        if (edgeCost <= threshold) {
+                            visited[next] = 1;
+                            queue.push(next);
+                        }
+                    }
+                }
+            }
+
+            if (component.length >= minPoints) {
+                for (let idx = 0; idx < component.length; idx++) {
+                    labels[component[idx]] = currentClusterId;
+                }
+                currentClusterId++;
+            }
+        }
+    }
+    return labels;
+}
+
+function runKinematicKMeans(flatMatrix, n, f, k) {
+    let centroids = new Float32Array(k * f);
+    for(let c=0; c<k; c++) centroids.set(flatMatrix.subarray(Math.floor(n/k)*c*f, (Math.floor(n/k)*c+1)*f), c*f);
+    let assignments = new Int32Array(n).fill(-1);
+    for (let iter = 0; iter < 5; iter++) {
+        let totalPass = n * k; let minDist = Infinity, closest = 0;
+        for (let idx = 0; idx < totalPass; idx++) {
+            let i = Math.floor(idx / k), c = idx % k, rowOffset = i * f, cOffset = c * f, dSq = 0;
+            for (let j = 0; j < f; j++) { const d = flatMatrix[rowOffset + j] - centroids[cOffset + j]; dSq += d * d; }
+            if (dSq < minDist) { minDist = dSq; closest = c; }
+            if (c === k - 1) { assignments[i] = closest; minDist = Infinity; closest = 0; }
+        }
+        centroids.fill(0); const counts = new Int32Array(k);
+        for (let i = 0; i < n; i++) { let c = assignments[i]; counts[c]++; for(let j=0; j<f; j++) centroids[c * f + j] += flatMatrix[i * f + j]; }
+        for (let c = 0; c < k; c++) { if (counts[c] > 0) { for(let j=0; j<f; j++) centroids[c * f + j] /= counts[c]; } }
+    }
+    return assignments;
+}
+
+function runKinematicMedoids(flatDistMatrix, n, k) {
+    let medoids = Array.from({length: k}, (_, i) => Math.floor((n / k) * i));
+    let assignments = new Int32Array(n).fill(-1);
+    for (let iter = 0; iter < 3; iter++) {
+        let totalPass = n * k; let minDist = Infinity, closest = 0;
+        for (let idx = 0; idx < totalPass; idx++) {
+            let i = Math.floor(idx / k), m = idx % k, d = flatDistMatrix[i * n + medoids[m]];
+            if (d < minDist) { minDist = d; closest = m; }
+            if (m === k - 1) { assignments[i] = closest; minDist = Infinity; closest = 0; }
+        }
+    }
+    return assignments;
 }
 
 function renderCanvasPlot(points, assignments) {
@@ -326,40 +439,25 @@ function renderCanvasPlot(points, assignments) {
     const pad = 40, rx = (maxX - minX) || 1, ry = (maxY - minY) || 1;
     const neonPalette = ['#00ff66', '#00e5ff', '#ff007f', '#9d00ff', '#ffb700', '#ff3333', '#00f5d4', '#70e000', '#ff70a6'];
     
-    // Batch Vector Path Rendering
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0, 255, 102, 0.08)';
+    ctx.lineWidth = 1.0;
     for (let i = 1; i < points.length; i++) {
-        if (assignments[i] === assignments[i-1]) {
-            const x0 = pad + ((points[i-1][0] - minX) / rx) * (w - pad * 2);
-            const y0 = h - (pad + ((points[i-1][1] - minY) / ry) * (h - pad * 2));
-            const x1 = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
-            const y1 = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
-            if (Math.abs(points[i][0] - points[i-1][0]) < rx * 0.15) {
-                ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-            }
+        const x0 = pad + ((points[i-1][0] - minX) / rx) * (w - pad * 2);
+        const y0 = h - (pad + ((points[i-1][1] - minY) / ry) * (h - pad * 2));
+        const x1 = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
+        const y1 = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
+        if (Math.abs(points[i][0] - points[i-1][0]) < rx * 0.25) {
+            ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+            ctx.strokeStyle = (assignments[i] === assignments[i-1] && assignments[i] !== -1) ? `rgba(0, 255, 102, 0.25)` : 'rgba(30, 41, 59, 0.15)';
+            ctx.stroke();
         }
     }
-    ctx.stroke();
 
-    // High performance discrete point blitting matrix mapping
-    const bucketedPoints = Array.from({ length: neonPalette.length }, () => []);
-    for (let i = 0; i < points.length; i++) {
-        bucketedPoints[assignments[i] % neonPalette.length].push(points[i]);
-    }
-
-    const side = points.length > 10000 ? 1.2 : 2.2;
-    const offset = side / 2;
-    for (let c = 0; c < bucketedPoints.length; c++) {
-        const pts = bucketedPoints[c];
-        if (pts.length === 0) continue;
-        ctx.fillStyle = neonPalette[c];
-        for (let i = 0; i < pts.length; i++) {
-            const cx = pad + ((pts[i][0] - minX) / rx) * (w - pad * 2);
-            const cy = h - (pad + ((pts[i][1] - minY) / ry) * (h - pad * 2));
-            ctx.fillRect(cx - offset, cy - offset, side, side);
-        }
+    for(let i=0; i<points.length; i++) {
+        const cx = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
+        const cy = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
+        ctx.beginPath(); ctx.arc(cx, cy, 2.0, 0, 2 * Math.PI);
+        ctx.fillStyle = assignments[i] === -1 ? '#334155' : neonPalette[assignments[i] % neonPalette.length];
+        ctx.fill();
     }
 }
 </script>
