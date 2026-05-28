@@ -68,8 +68,8 @@
 
 <div class="app-container">
     <header>
-        <h2>Kinematic Distance Explorer (Batch Vector Architecture)</h2>
-        <div id="statusMsg" class="status">Engine online. Awaiting high-density tracking arrays.</div>
+        <h2>Kinematic Distance Explorer (Thread-Isolated Web Worker Architecture)</h2>
+        <div id="statusMsg" class="status">System idle. Ready to parse deep data buffers.</div>
     </header>
     
     <div class="main-content">
@@ -82,7 +82,7 @@
                 <label class="input-label">Option B: Raw Matrix Paste</label>
                 <textarea id="dataInput" placeholder="[[x1,y1,z1], [x2,y2,z2]]"></textarea>
             </div>
-            <button id="runBtn">Stream & Process Data</button>
+            <button id="runBtn">Launch Background Worker</button>
 
             <div class="engine-select-panel" id="engineSelectors" style="display:none;">
                 <label class="input-label" style="color:var(--neon-green); display:block; margin-bottom:10px;">Hyperparameters</label>
@@ -110,52 +110,14 @@
 </div>
 
 <script>
-let globalX = null; 
-let globalPoints = null; 
-let globalClusterMaps = {};
-let currentViewMode = 'kmeans';
+// Inline Web Worker implementation script logic block
+const workerBlobCode = `
+    self.onmessage = function(e) {
+        const { globalX, targetK, lambda } = e.data;
+        const n = globalX.length, f = globalX[0]?.length || 0;
+        if(n === 0 || f === 0) { self.postMessage({ type: 'error', msg: 'Empty array space encountered.' }); return; }
 
-document.getElementById('runBtn').addEventListener('click', handleExecution);
-document.getElementById('paramK').addEventListener('change', () => { if(globalX) recomputeAndRender(); });
-document.getElementById('paramLambda').addEventListener('change', () => { if(globalX) recomputeAndRender(); });
-
-document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        currentViewMode = e.target.getAttribute('data-mode');
-        if (globalPoints) renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
-    });
-});
-
-function updateStatus(msg, isError = false) {
-    const statusDiv = document.getElementById('statusMsg');
-    if (statusDiv) { statusDiv.textContent = msg; statusDiv.style.color = isError ? '#ff3366' : '#94a3b8'; }
-}
-
-function handleExecution() {
-    const fileInput = document.getElementById('fileInput');
-    const textInput = document.getElementById('dataInput').value.trim();
-    if (fileInput.files.length > 0) {
-        const reader = new FileReader();
-        reader.onload = (e) => { try { globalX = JSON.parse(e.target.result); recomputeAndRender(); } catch(err) { updateStatus("Format error: " + err.message, true); } };
-        reader.readAsText(fileInput.files[0]);
-    } else if (textInput) {
-        try { globalX = JSON.parse(textInput); recomputeAndRender(); } catch(err) { updateStatus("Format error: " + err.message, true); }
-    }
-}
-
-function recomputeAndRender() {
-    const n = globalX.length, f = globalX[0]?.length || 0;
-    if (n < 5 || f === 0) { updateStatus("Insufficient matrix space.", true); return; }
-
-    const targetK = parseInt(document.getElementById('paramK').value) || 6;
-    const lambda = parseFloat(document.getElementById('paramLambda').value) || 1.5;
-    
-    updateStatus("Streaming phase space expansion vectors...");
-
-    setTimeout(() => {
-        let startTime = performance.now();
+        self.postMessage({ type: 'status', msg: 'Worker Thread: Synthesizing phase space vectors...' });
         const augmentedFeatures = f * 2;
         const flatKinematicMatrix = new Float32Array(n * augmentedFeatures);
         
@@ -170,6 +132,7 @@ function recomputeAndRender() {
             }
         }
 
+        self.postMessage({ type: 'status', msg: 'Worker Thread: Projecting multi-dimensional PCA spaces...' });
         const means = new Float32Array(f);
         for (let i = 0; i < n * f; i++) means[i % f] += globalX[Math.floor(i / f)][i % f];
         for (let j = 0; j < f; j++) means[j] /= n;
@@ -201,86 +164,150 @@ function recomputeAndRender() {
             return { vector: p, scores: t };
         }
         const pc1 = inlinePCA(null), pc2 = inlinePCA(pc1);
-        globalPoints = Array.from({length: n}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
+        const points = Array.from({length: n}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
 
-        updateStatus("Executing high-performance inline cluster passes...");
+        self.postMessage({ type: 'status', msg: 'Worker Thread: Processing algorithmic partitioning passes...' });
+        
+        // 1. K-Means
+        let centroids = new Float32Array(targetK * augmentedFeatures);
+        for(let c=0; c<targetK; c++) centroids.set(flatKinematicMatrix.subarray(Math.floor(n/targetK)*c*augmentedFeatures, (Math.floor(n/targetK)*c+1)*augmentedFeatures), c*augmentedFeatures);
+        let kmeansAssig = new Int32Array(n).fill(-1);
+        for (let iter = 0; iter < 8; iter++) {
+            for (let i = 0; i < n; i++) {
+                let rowOffset = i * augmentedFeatures, minDist = Infinity, closest = 0;
+                for (let c = 0; c < targetK; c++) {
+                    let cOffset = c * augmentedFeatures, dSq = 0;
+                    for (let j = 0; j < augmentedFeatures; j++) { const d = flatKinematicMatrix[rowOffset + j] - centroids[cOffset + j]; dSq += d * d; }
+                    if (dSq < minDist) { minDist = dSq; closest = c; }
+                }
+                kmeansAssig[i] = closest;
+            }
+            centroids.fill(0); const counts = new Int32Array(targetK);
+            for (let i = 0; i < n; i++) { let c = kmeansAssig[i]; counts[c]++; for(let j=0; j<augmentedFeatures; j++) centroids[c * augmentedFeatures + j] += flatKinematicMatrix[i * augmentedFeatures + j]; }
+            for (let c = 0; c < targetK; c++) { if (counts[c] > 0) { for(let j=0; j<augmentedFeatures; j++) centroids[c * augmentedFeatures + j] /= counts[c]; } }
+        }
 
-        setTimeout(() => {
-            globalClusterMaps.kmeans = runLinearKMeans(flatKinematicMatrix, n, augmentedFeatures, targetK);
-            globalClusterMaps.gmm = runLinearGMM(flatKinematicMatrix, n, augmentedFeatures, targetK);
-            globalClusterMaps.fuzzy = runLinearFuzzyCMeans(flatKinematicMatrix, n, augmentedFeatures, targetK);
+        // 2. GMM Diagonal Profile Matrix
+        let gmmMeans = new Float32Array(targetK * augmentedFeatures);
+        let gmmVars = new Float32Array(targetK * augmentedFeatures).fill(1.0);
+        let gmmWeights = new Float32Array(targetK).fill(1 / targetK);
+        let gmmAssig = new Int32Array(n);
+        for(let c=0; c<targetK; c++) gmmMeans.set(flatKinematicMatrix.subarray(Math.floor(n/targetK)*c*augmentedFeatures, (Math.floor(n/targetK)*c+1)*augmentedFeatures), c*augmentedFeatures);
+        for (let iter = 0; iter < 4; iter++) {
+            for (let i = 0; i < n; i++) {
+                let rowOffset = i * augmentedFeatures, maxProb = -Infinity, bestCluster = 0;
+                for (let c = 0; c < targetK; c++) {
+                    let mOffset = c * augmentedFeatures, logProb = Math.log(gmmWeights[c]);
+                    for (let j = 0; j < augmentedFeatures; j++) {
+                        let diff = flatKinematicMatrix[rowOffset + j] - gmmMeans[mOffset + j];
+                        logProb -= 0.5 * (Math.log(2 * Math.PI * gmmVars[mOffset + j]) + (diff * diff) / (gmmVars[mOffset + j] || 0.01));
+                    }
+                    if (logProb > maxProb) { maxProb = logProb; bestCluster = c; }
+                }
+                gmmAssig[i] = bestCluster;
+            }
+        }
 
+        // 3. Fuzzy C Means
+        let fcmCentroids = new Float32Array(targetK * augmentedFeatures);
+        for(let c=0; c<targetK; c++) fcmCentroids.set(flatKinematicMatrix.subarray(Math.floor(n/targetK)*c*augmentedFeatures, (Math.floor(n/targetK)*c+1)*augmentedFeatures), c*augmentedFeatures);
+        let fcmAssig = new Int32Array(n);
+        for (let iter = 0; iter < 3; iter++) {
+            for (let i = 0; i < n; i++) {
+                let rowOffset = i * augmentedFeatures, minDist = Infinity, bestC = 0;
+                for (let c = 0; c < targetK; c++) {
+                    let cOffset = c * augmentedFeatures, dSq = 0;
+                    for (let j = 0; j < augmentedFeatures; j++) { const d = flatKinematicMatrix[rowOffset + j] - fcmCentroids[cOffset + j]; dSq += d * d; }
+                    if (dSq < minDist) { minDist = dSq; bestC = c; }
+                }
+                fcmAssig[i] = bestC;
+            }
+        }
+
+        self.postMessage({
+            type: 'done',
+            points: points,
+            maps: {
+                kmeans: Array.from(kmeansAssig),
+                gmm: Array.from(gmmAssig),
+                fuzzy: Array.from(fcmAssig)
+            }
+        });
+    };
+`;
+
+let globalPoints = null;
+let globalClusterMaps = {};
+let currentViewMode = 'kmeans';
+let workerInstance = null;
+
+// Build structural URL Object out of code blocks to initialize background thread
+const blobContainer = new Blob([workerBlobCode], { type: 'application/javascript' });
+const workerURL = URL.createObjectURL(blobContainer);
+
+document.getElementById('runBtn').addEventListener('click', handleExecution);
+document.getElementById('paramK').addEventListener('change', triggerWorkerComputation);
+document.getElementById('paramLambda').addEventListener('change', triggerWorkerComputation);
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentViewMode = e.target.getAttribute('data-mode');
+        if (globalPoints) renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
+    });
+});
+
+function updateStatus(msg, isError = false) {
+    const statusDiv = document.getElementById('statusMsg');
+    if (statusDiv) { statusDiv.textContent = msg; statusDiv.style.color = isError ? '#ff3366' : '#94a3b8'; }
+}
+
+let loadedRawDataset = null;
+
+function handleExecution() {
+    const fileInput = document.getElementById('fileInput');
+    const textInput = document.getElementById('dataInput').value.trim();
+    
+    if (fileInput.files.length > 0) {
+        updateStatus("Parsing incoming local file architecture...");
+        const reader = new FileReader();
+        reader.onload = (e) => { try { loadedRawDataset = JSON.parse(e.target.result); triggerWorkerComputation(); } catch(err) { updateStatus("JSON parse failure: " + err.message, true); } };
+        reader.readAsText(fileInput.files[0]);
+    } else if (textInput) {
+        try { loadedRawDataset = JSON.parse(textInput); triggerWorkerComputation(); } catch(err) { updateStatus("Input parsing error: " + err.message, true); }
+    } else {
+        updateStatus("Please load tracking inputs or clear system buffers.", true);
+    }
+}
+
+function triggerWorkerComputation() {
+    if (!loadedRawDataset) return;
+    
+    if (workerInstance) workerInstance.terminate();
+    workerInstance = new Worker(workerURL);
+    
+    const targetK = parseInt(document.getElementById('paramK').value) || 6;
+    const lambda = parseFloat(document.getElementById('paramLambda').value) || 1.5;
+    let startTime = performance.now();
+
+    workerInstance.onmessage = function(e) {
+        const payload = e.data;
+        if (payload.type === 'status') {
+            updateStatus(payload.msg);
+        } else if (payload.type === 'error') {
+            updateStatus(payload.msg, true);
+        } else if (payload.type === 'done') {
+            globalPoints = payload.points;
+            globalClusterMaps = payload.maps;
+            
             renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
             document.getElementById('engineSelectors').style.display = 'block';
-            updateStatus(`Evaluation Complete | Scaled Points: ${n} | Processing Frame: ${(performance.now() - startTime).toFixed(1)}ms`);
-        }, 10);
-    }, 20);
-}
-
-function runLinearKMeans(flatMatrix, n, f, k) {
-    let centroids = new Float32Array(k * f);
-    for(let c=0; c<k; c++) centroids.set(flatMatrix.subarray(Math.floor(n/k)*c*f, (Math.floor(n/k)*c+1)*f), c*f);
-    let assignments = new Int32Array(n).fill(-1);
-    
-    for (let iter = 0; iter < 8; iter++) {
-        for (let i = 0; i < n; i++) {
-            let rowOffset = i * f, minDist = Infinity, closest = 0;
-            for (let c = 0; c < k; c++) {
-                let cOffset = c * f, dSq = 0;
-                for (let j = 0; j < f; j++) { const d = flatMatrix[rowOffset + j] - centroids[cOffset + j]; dSq += d * d; }
-                if (dSq < minDist) { minDist = dSq; closest = c; }
-            }
-            assignments[i] = closest;
+            updateStatus(`Execution Complete | Isolated Workers Balanced | N = ${globalPoints.length} | Sync Time: ${(performance.now() - startTime).toFixed(1)}ms`);
         }
-        centroids.fill(0); const counts = new Int32Array(k);
-        for (let i = 0; i < n; i++) { let c = assignments[i]; counts[c]++; for(let j=0; j<f; j++) centroids[c * f + j] += flatMatrix[i * f + j]; }
-        for (let c = 0; c < k; c++) { if (counts[c] > 0) { for(let j=0; j<f; j++) centroids[c * f + j] /= counts[c]; } }
-    }
-    return assignments;
-}
+    };
 
-function runLinearGMM(flatMatrix, n, f, k) {
-    let means = new Float32Array(k * f);
-    let vars = new Float32Array(k * f).fill(1.0);
-    let weights = new Float32Array(k).fill(1 / k);
-    let assignments = new Int32Array(n);
-    
-    for(let c=0; c<k; c++) means.set(flatMatrix.subarray(Math.floor(n/k)*c*f, (Math.floor(n/k)*c+1)*f), c*f);
-
-    for (let iter = 0; iter < 4; iter++) {
-        for (let i = 0; i < n; i++) {
-            let rowOffset = i * f, maxProb = -Infinity, bestCluster = 0;
-            for (let c = 0; c < k; c++) {
-                let mOffset = c * f, logProb = Math.log(weights[c]);
-                for (let j = 0; j < f; j++) {
-                    let diff = flatMatrix[rowOffset + j] - means[mOffset + j];
-                    logProb -= 0.5 * (Math.log(2 * Math.PI * vars[mOffset + j]) + (diff * diff) / (vars[mOffset + j] || 0.01));
-                }
-                if (logProb > maxProb) { maxProb = logProb; bestCluster = c; }
-            }
-            assignments[i] = bestCluster;
-        }
-    }
-    return assignments;
-}
-
-function runLinearFuzzyCMeans(flatMatrix, n, f, k) {
-    let centroids = new Float32Array(k * f);
-    for(let c=0; c<k; c++) centroids.set(flatMatrix.subarray(Math.floor(n/k)*c*f, (Math.floor(n/k)*c+1)*f), c*f);
-    let assignments = new Int32Array(n);
-
-    for (let iter = 0; iter < 3; iter++) {
-        for (let i = 0; i < n; i++) {
-            let rowOffset = i * f, minDist = Infinity, bestC = 0;
-            for (let c = 0; c < k; c++) {
-                let cOffset = c * f, dSq = 0;
-                for (let j = 0; j < f; j++) { const d = flatMatrix[rowOffset + j] - centroids[cOffset + j]; dSq += d * d; }
-                if (dSq < minDist) { minDist = dSq; bestC = c; }
-            }
-            assignments[i] = bestC;
-        }
-    }
-    return assignments;
+    workerInstance.postMessage({ globalX: loadedRawDataset, targetK, lambda });
 }
 
 function renderCanvasPlot(points, assignments) {
@@ -299,10 +326,10 @@ function renderCanvasPlot(points, assignments) {
     const pad = 40, rx = (maxX - minX) || 1, ry = (maxY - minY) || 1;
     const neonPalette = ['#00ff66', '#00e5ff', '#ff007f', '#9d00ff', '#ffb700', '#ff3333', '#00f5d4', '#70e000', '#ff70a6'];
     
-    // BATCH DRAWING PASS 1: Single path buffer for continuous trajectory lines
-    ctx.lineWidth = 0.6;
+    // Batch Vector Path Rendering
+    ctx.lineWidth = 0.5;
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0, 255, 102, 0.12)';
+    ctx.strokeStyle = 'rgba(0, 255, 102, 0.08)';
     for (let i = 1; i < points.length; i++) {
         if (assignments[i] === assignments[i-1]) {
             const x0 = pad + ((points[i-1][0] - minX) / rx) * (w - pad * 2);
@@ -310,22 +337,19 @@ function renderCanvasPlot(points, assignments) {
             const x1 = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
             const y1 = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
             if (Math.abs(points[i][0] - points[i-1][0]) < rx * 0.15) {
-                ctx.moveTo(x0, y0);
-                ctx.lineTo(x1, y1);
+                ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
             }
         }
     }
     ctx.stroke();
 
-    // BATCH DRAWING PASS 2: Structural bucketing by color to avoid sequential context switching
+    // High performance discrete point blitting matrix mapping
     const bucketedPoints = Array.from({ length: neonPalette.length }, () => []);
     for (let i = 0; i < points.length; i++) {
-        const clusterId = assignments[i] % neonPalette.length;
-        bucketedPoints[clusterId].push(points[i]);
+        bucketedPoints[assignments[i] % neonPalette.length].push(points[i]);
     }
 
-    // High fidelity blitting via flat rectangles instead of vector circle geometry arcs
-    const side = points.length > 10000 ? 1.5 : 2.5;
+    const side = points.length > 10000 ? 1.2 : 2.2;
     const offset = side / 2;
     for (let c = 0; c < bucketedPoints.length; c++) {
         const pts = bucketedPoints[c];
