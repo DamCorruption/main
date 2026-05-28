@@ -82,7 +82,7 @@
                 <label class="input-label">Option B: Raw Matrix Paste</label>
                 <textarea id="dataInput" placeholder="[[x1,y1,z1], [x2,y2,z2]]"></textarea>
             </div>
-            <button id="runBtn">Analyze on GPU</button>
+            <button id="runBtn">Analyze Framework</button>
 
             <div class="engine-select-panel" id="engineSelectors" style="display:none;">
                 <label class="input-label" style="color:var(--neon-green); display:block; margin-bottom:10px;">Hyperparameter Tuning</label>
@@ -93,12 +93,12 @@
                             <input type="number" id="paramK" value="6" min="2" max="50" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
                         </div>
                         <div style="flex:1;">
-                            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">DBSCAN Eps</label>
-                            <input type="number" id="paramEps" value="0" min="0" max="20" step="0.1" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
+                            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Sensitivity Tolerance</label>
+                            <input type="number" id="paramEps" value="1.8" min="0.5" max="10" step="0.1" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
                         </div>
                     </div>
                     <div>
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Velocity Weight (\(\lambda\))</label>
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Velocity Weight (λ)</label>
                         <input type="number" id="paramLambda" value="1.5" min="0" max="5" step="0.1" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
                     </div>
                 </div>
@@ -191,7 +191,7 @@ function gpuComputeDistances(matrix, n, f) {
     gl.uniform1i(gl.getUniformLocation(prog, "chunks"), numChunks); gl.uniform1i(gl.getUniformLocation(prog, "samples"), n);
 
     const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
-    const pLoc = gl.getAttribLocation(prog, "pos"); gl.enableVertexAttribArray(pLoc); gl.vertexVertexAttribPointer = gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+    const pLoc = gl.getAttribLocation(prog, "pos"); gl.enableVertexAttribArray(pLoc); gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
 
     const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     const rb = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, rb);
@@ -208,13 +208,13 @@ function gpuComputeDistances(matrix, n, f) {
 
 function recomputeAndRender() {
     const n = globalX.length, f = globalX[0]?.length || 0;
-    if (n < 5 || f === 0) { updateStatus("Insufficient matrix bounds.", true); return; }
+    if (n < 5 || f === 0) { updateStatus("Insufficient matrix dimensions.", true); return; }
 
     const minPoints = parseInt(document.getElementById('paramK').value) || 6;
-    const epsOverride = parseFloat(document.getElementById('paramEps').value) || 0;
+    const epsTolerance = parseFloat(document.getElementById('paramEps').value) || 1.8;
     const lambda = parseFloat(document.getElementById('paramLambda').value) || 1.5;
     
-    updateStatus("Stage 1: Building Kinematic Phase Space Fields...");
+    updateStatus("Stage 1: Engineering Phase Space Geometry...");
 
     setTimeout(() => {
         let startTime = performance.now();
@@ -265,7 +265,7 @@ function recomputeAndRender() {
         const pc1 = inlinePCA(null), pc2 = inlinePCA(pc1);
         globalPoints = Array.from({length: n}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
 
-        updateStatus("Stage 2: Firing WebGL2 Distance Rasterization...");
+        updateStatus("Stage 2: Processing Matrix via GPU...");
         
         const reshapedData = [];
         for(let i=0; i<n; i++) reshapedData.push(Array.from(flatKinematicMatrix.subarray(i*augmentedFeatures, (i+1)*augmentedFeatures)));
@@ -281,10 +281,10 @@ function recomputeAndRender() {
             }
         }
 
-        updateStatus("Stage 3: Building Mutual Reachability Network Space...");
+        updateStatus("Stage 3: Parsing Adaptive Density Field...");
 
         setTimeout(() => {
-            globalClusterMaps.mutual_density = runMutualReachabilityClustering(flatDistanceMatrix, n, minPoints, epsOverride);
+            globalClusterMaps.mutual_density = runMutualReachabilityClustering(flatDistanceMatrix, n, minPoints, epsTolerance);
             globalClusterMaps.highdim = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, 6);
             globalClusterMaps.kmedoids = runKinematicMedoids(flatDistanceMatrix, n, 6);
             globalClusterMaps.gmm = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, 4); 
@@ -294,20 +294,20 @@ function recomputeAndRender() {
             document.getElementById('engineSelectors').style.display = 'block';
             
             const detected = new Set(globalClusterMaps.mutual_density.filter(c => c >= 0)).size;
-            updateStatus(`Mutual Space Pipeline Configured | Paths Found: ${detected} | Execution Frame: ${(performance.now() - startTime).toFixed(1)}ms`);
+            updateStatus(`Mutual Space Active | Dynamic Strands Found: ${detected} | Calc Frame: ${(performance.now() - startTime).toFixed(1)}ms`);
         }, 20);
     }, 40);
 }
 
-// ==========================================
-// MUTUAL REACHABILITY TRACKING GRAPH CORE
-// ==========================================
-function runMutualReachabilityClustering(flatDistMatrix, n, minPoints, epsOverride) {
+// ==================================================
+// ADAPTIVE MUTUAL NEIGHBORHOOD DENSITY KERNEL
+// ==================================================
+function runMutualReachabilityClustering(flatDistMatrix, n, minPoints, epsTolerance) {
     let labels = new Int32Array(n).fill(-1);
     let coreDistances = new Float32Array(n);
     let sortBuffer = new Float32Array(n);
     
-    // Pass 1: Isolate Core Distances for each tracking state
+    // Step 1: Calculate core radius for each coordinate node
     for (let i = 0; i < n; i++) {
         const offset = i * n;
         for (let j = 0; j < n; j++) sortBuffer[j] = flatDistMatrix[offset + j];
@@ -315,73 +315,48 @@ function runMutualReachabilityClustering(flatDistMatrix, n, minPoints, epsOverri
         coreDistances[i] = sortBuffer[Math.min(minPoints - 1, n - 1)];
     }
 
-    // Pass 2: Generate Minimum Spanning Tree over Mutual Reachability Framework
-    let inTree = new Uint8Array(n).fill(0);
-    let minDistances = new Float32Array(n).fill(Infinity);
-    let parentNode = new Int32Array(n).fill(-1);
-    let edgeWeights = new Float32Array(n).fill(Infinity);
-    minDistances[0] = 0;
-
-    for (let step = 0; step < n; step++) {
-        let u = -1; let minD = Infinity;
-        for (let i = 0; i < n; i++) { if (!inTree[i] && minDistances[i] < minD) { minD = minDistances[i]; u = i; } }
-        if (u === -1) break;
-        inTree[u] = 1;
-
-        const uOffset = u * n;
-        const coreU = coreDistances[u];
-        
-        for (let v = 0; v < n; v++) {
-            if (!inTree[v]) {
-                // Compute d_mrt(u, v) = max(core(u), core(v), base_dist(u,v))
-                let mutualReachDist = Math.max(coreU, coreDistances[v], flatDistMatrix[uOffset + v]);
-                if (mutualReachDist < minDistances[v]) {
-                    minDistances[v] = mutualReachDist;
-                    parentNode[v] = u;
-                    edgeWeights[v] = mutualReachDist;
-                }
-            }
-        }
-    }
-
-    // Pass 3: Adaptive Tree Splitting Threshold Determination
-    let threshold = epsOverride;
-    if (threshold === 0) {
-        let activeEdges = edgeWeights.filter(w => w !== Infinity && w > 0);
-        activeEdges.sort();
-        // If no override, drop tracking connections beyond the 85th percentile distance jump
-        threshold = activeEdges[Math.floor(activeEdges.length * 0.85)] || 1.0;
-    }
-
-    // Pass 4: Traverse and extract continuous geometric paths
+    // Step 2: Adaptive mutual reachability connectivity expansion
     let visited = new Uint8Array(n).fill(0);
     let currentClusterId = 0;
 
     for (let i = 0; i < n; i++) {
         if (!visited[i]) {
-            let component = [];
-            let queue = [i];
-            visited[i] = 1;
+            let coreI = coreDistances[i];
+            let neighbors = [];
+            
+            // Build adaptive neighborhood scan
+            for (let j = 0; j < n; j++) {
+                let mRDist = Math.max(coreI, coreDistances[j], flatDistMatrix[i * n + j]);
+                if (mRDist <= coreI * epsTolerance) neighbors.push(j);
+            }
 
-            while (queue.length > 0) {
-                let curr = queue.shift();
-                component.push(curr);
+            if (neighbors.length >= minPoints) {
+                let clusterComponent = [i];
+                visited[i] = 1;
+                let queue = [...neighbors];
 
-                for (let next = 0; next < n; next++) {
-                    if (!visited[next] && (parentNode[next] === curr || parentNode[curr] === next)) {
-                        // Check linkage matrix against mutual distance threshold
-                        let edgeCost = parentNode[next] === curr ? edgeWeights[next] : edgeWeights[curr];
-                        if (edgeCost <= threshold) {
-                            visited[next] = 1;
-                            queue.push(next);
+                while (queue.length > 0) {
+                    let curr = queue.shift();
+                    if (!visited[curr]) {
+                        visited[curr] = 1;
+                        clusterComponent.push(curr);
+
+                        let coreCurr = coreDistances[curr];
+                        let currNeighbors = [];
+                        for (let m = 0; m < n; m++) {
+                            let dMrt = Math.max(coreCurr, coreDistances[m], flatDistMatrix[curr * n + m]);
+                            if (dMrt <= coreCurr * epsTolerance) currNeighbors.push(m);
+                        }
+                        if (currNeighbors.length >= minPoints) {
+                            for(let idx=0; idx<currNeighbors.length; idx++) {
+                                if(!visited[currNeighbors[idx]]) queue.push(currNeighbors[idx]);
+                            }
                         }
                     }
                 }
-            }
 
-            if (component.length >= minPoints) {
-                for (let idx = 0; idx < component.length; idx++) {
-                    labels[component[idx]] = currentClusterId;
+                for (let idx = 0; idx < clusterComponent.length; idx++) {
+                    labels[clusterComponent[idx]] = currentClusterId;
                 }
                 currentClusterId++;
             }
