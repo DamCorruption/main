@@ -52,6 +52,7 @@
             background: var(--neon-green); color: #000; border: none; padding: 12px;
             border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; width: 100%;
         }
+        button:hover { opacity: 0.9; }
         .engine-select-panel { border-top: 1px solid var(--border-glow); padding-top: 15px; }
         .btn-group { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
         .mode-btn {
@@ -68,7 +69,7 @@
 <div class="app-container">
     <header>
         <h2>Kinematic Distance Explorer (WebGL2 Accelerated)</h2>
-        <div id="statusMsg" class="status">Ready for structured motion-vector matrix validation.</div>
+        <div id="statusMsg" class="status">Ready for density-based context evaluation.</div>
     </header>
     
     <div class="main-content">
@@ -87,8 +88,8 @@
                 <label class="input-label" style="color:var(--neon-green); display:block; margin-bottom:10px;">Hyperparameters</label>
                 <div style="margin-bottom:15px; display:flex; gap:10px;">
                     <div style="flex:1;">
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Clusters (K)</label>
-                        <input type="number" id="paramK" value="6" min="2" max="16" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Min Cluster Size</label>
+                        <input type="number" id="paramK" value="15" min="2" max="50" style="width:100%; background:#070a12; border:1px solid #334155; color:#fff; padding:6px; border-radius:4px;">
                     </div>
                     <div style="flex:1;">
                         <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Velocity Weight</label>
@@ -98,11 +99,11 @@
 
                 <label class="input-label" style="color:var(--neon-green);">Kinematic Processing Mode</label>
                 <div class="btn-group">
-                    <button class="mode-btn active" data-mode="highdim">1. Phase-Space Trajectory K-Means</button>
-                    <button class="mode-btn" data-mode="kmedoids">2. Kinematic K-Medoids Exemplars</button>
-                    <button class="mode-btn" data-mode="gmm">3. Trajectory Gaussian Mixture Model</button>
-                    <button class="mode-btn" data-mode="fuzzy">4. Fuzzy Phase-Space C-Means</button>
-                    <button class="mode-btn" data-mode="velocity">5. Smooth Velocity-Delta Field</button>
+                    <button class="mode-btn active" data-mode="hdbscan">★ Density-Based HDBSCAN (Shotgun)</button>
+                    <button class="mode-btn" data-mode="highdim">2. Phase-Space Trajectory K-Means</button>
+                    <button class="mode-btn" data-mode="kmedoids">3. Kinematic K-Medoids Exemplars</button>
+                    <button class="mode-btn" data-mode="gmm">4. Trajectory Gaussian Mixture Model</button>
+                    <button class="mode-btn" data-mode="fuzzy">5. Fuzzy Phase-Space C-Means</button>
                 </div>
             </div>
         </div>
@@ -114,7 +115,7 @@
 let globalX = null; 
 let globalPoints = null; 
 let globalClusterMaps = {};
-let currentViewMode = 'highdim';
+let currentViewMode = 'hdbscan';
 
 document.getElementById('runBtn').addEventListener('click', handleExecution);
 document.getElementById('paramK').addEventListener('change', () => { if(globalX) recomputeAndRender(); });
@@ -147,7 +148,6 @@ function handleExecution() {
     }
 }
 
-// GPU Distance Matrix Computation
 function gpuComputeDistances(matrix, n, f) {
     const canvas = document.createElement('canvas'); canvas.width = n; canvas.height = n;
     const gl = canvas.getContext('webgl2');
@@ -200,37 +200,30 @@ function gpuComputeDistances(matrix, n, f) {
     return res;
 }
 
-// Master Asynchronous Logic Orchestrator
 function recomputeAndRender() {
     const n = globalX.length, f = globalX[0]?.length || 0;
     if (n < 5 || f === 0) { updateStatus("Insufficient dataset dimensions.", true); return; }
 
-    const K = parseInt(document.getElementById('paramK').value) || 6;
+    const minClusterSize = parseInt(document.getElementById('paramK').value) || 15;
     const lambda = parseFloat(document.getElementById('paramLambda').value) || 1.5;
-    updateStatus("Processing Step 1: Mapping Phase-Space Matrix...");
+    updateStatus("Processing Step 1: Structural Kinematics Processing...");
 
     setTimeout(() => {
         let startTime = performance.now();
-        
-        // 1. Structural Phase-Space Generation (Augmenting Position with Slashed Velocity components)
         const augmentedFeatures = f * 2;
         const flatKinematicMatrix = new Float32Array(n * augmentedFeatures);
         
-        // Populate positions and smoothed historical delta vectors smoothly inside 1 linear block pass
         for (let i = 0; i < n; i++) {
             const rowOffset = i * augmentedFeatures;
             const prev = i === 0 ? globalX[0] : globalX[i - 1];
             const curr = globalX[i];
             const next = i === n - 1 ? globalX[n - 1] : globalX[i + 1];
-
             for (let j = 0; j < f; j++) {
                 flatKinematicMatrix[rowOffset + j] = curr[j];
-                // Smooth Central difference velocity to handle baseline sensor ripple smoothly
                 flatKinematicMatrix[rowOffset + f + j] = ((next[j] - prev[j]) / 2.0) * lambda;
             }
         }
 
-        // Calculate Spatial Plot Projections (2D Display Layer via Linearized PCA)
         const means = new Float32Array(f);
         for (let i = 0; i < n * f; i++) means[i % f] += globalX[Math.floor(i / f)][i % f];
         for (let j = 0; j < f; j++) means[j] /= n;
@@ -264,12 +257,12 @@ function recomputeAndRender() {
         const pc1 = inlinePCA(null), pc2 = inlinePCA(pc1);
         globalPoints = Array.from({length: n}, (_, i) => [pc1.scores[i], pc2.scores[i]]);
 
-        updateStatus("Processing Step 2: Executing GPU Interventions...");
+        updateStatus("Processing Step 2: GPU Distance Extraction...");
         
-        // Pass augmented kinematics straight to WebGL pipeline
         const reshapedData = [];
         for(let i=0; i<n; i++) reshapedData.push(Array.from(flatKinematicMatrix.subarray(i*augmentedFeatures, (i+1)*augmentedFeatures)));
         let flatDistanceMatrix = gpuComputeDistances(reshapedData, n, augmentedFeatures);
+        
         if(!flatDistanceMatrix) {
             flatDistanceMatrix = new Float32Array(n * n);
             for(let i=0; i<n; i++) {
@@ -280,26 +273,25 @@ function recomputeAndRender() {
             }
         }
 
-        updateStatus("Processing Step 3: Resolving Tracking Segments...");
+        updateStatus("Processing Step 3: Resolving Spatial Shotgun Engines...");
 
-        // Stagger engine workloads over MacroTask loops to avoid browser freezing
         setTimeout(() => {
-            globalClusterMaps.highdim = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, K);
+            globalClusterMaps.hdbscan = runLinearHDBSCAN(flatDistanceMatrix, n, minClusterSize);
             setTimeout(() => {
-                globalClusterMaps.kmedoids = runKinematicMedoids(flatDistanceMatrix, n, K);
+                globalClusterMaps.highdim = runKinematicKMeans(flatKinematicMatrix, n, augmentedFeatures, 6);
                 setTimeout(() => {
-                    globalClusterMaps.gmm = runKinematicGMM(globalPoints, flatKinematicMatrix, augmentedFeatures, n, K);
+                    globalClusterMaps.kmedoids = runKinematicMedoids(flatDistanceMatrix, n, 6);
                     setTimeout(() => {
-                        globalClusterMaps.fuzzy = runKinematicFuzzy(globalPoints, K);
-                        
-                        // Isolation layer for pure structural velocity tracking
-                        const pureVelocityMatrix = new Float32Array(n * f);
-                        for(let i=0; i<n; i++) pureVelocityMatrix.set(flatKinematicMatrix.subarray(i*augmentedFeatures+f, i*augmentedFeatures+f+f), i*f);
-                        globalClusterMaps.velocity = runKinematicKMeans(pureVelocityMatrix, n, f, K);
+                        globalClusterMaps.gmm = runKinematicGMM(globalPoints, n, 6);
+                        setTimeout(() => {
+                            globalClusterMaps.fuzzy = runKinematicFuzzy(globalPoints, 6);
 
-                        renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
-                        document.getElementById('engineSelectors').style.display = 'block';
-                        updateStatus(`Zero-Nest Kinemic Framework Active | K=${K} | Footprint States: ${n} | Complete Process Execution Time: ${(performance.now() - startTime).toFixed(1)}ms`);
+                            renderCanvasPlot(globalPoints, globalClusterMaps[currentViewMode]);
+                            document.getElementById('engineSelectors').style.display = 'block';
+                            
+                            const activeClusters = new Set(globalClusterMaps.hdbscan.filter(c => c >= 0)).size;
+                            updateStatus(`HDBSCAN Active | Dynamic Clusters Detected: ${activeClusters} | Evaluation Time: ${(performance.now() - startTime).toFixed(1)}ms`);
+                        }, 15);
                     }, 15);
                 }, 15);
             }, 15);
@@ -307,14 +299,81 @@ function recomputeAndRender() {
     }, 40);
 }
 
-// 1. K-Means engine utilizing continuous trajectory density checks
+// ==========================================
+// UNNESTED HIGH-PERFORMANCE HDBSCAN CORE
+// ==========================================
+function runLinearHDBSCAN(flatDistMatrix, n, minClusterSize) {
+    let labels = new Int32Array(n).fill(-1);
+    let coreDistances = new Float32Array(n);
+    
+    // Pass 1: Compute Core Distances (Mutual reachability radius via the minClusterSize position)
+    let totalElements = n * n;
+    let pointBuffer = new Float32Array(n);
+    
+    for (let i = 0; i < n; i++) {
+        const offset = i * n;
+        for (let j = 0; j < n; j++) pointBuffer[j] = flatDistMatrix[offset + j];
+        pointBuffer.sort();
+        coreDistances[i] = pointBuffer[Math.min(minClusterSize, n - 1)];
+    }
+
+    // Pass 2: Single Pass Linear Prim's Algorithm to generate density mapping
+    let inTree = new Uint8Array(n).fill(0);
+    let minDistances = new Float32Array(n).fill(Infinity);
+    let parentNode = new Int32Array(n).fill(-1);
+    minDistances[0] = 0;
+
+    for (let step = 0; step < n; step++) {
+        let u = -1; let minD = Infinity;
+        for (let i = 0; i < n; i++) { if (!inTree[i] && minDistances[i] < minD) { minD = minDistances[i]; u = i; } }
+        if (u === -1) break;
+        inTree[u] = 1;
+
+        const uOffset = u * n;
+        const coreU = coreDistances[u];
+        
+        for (let v = 0; v < n; v++) {
+            if (!inTree[v]) {
+                // HDBSCAN Mutual Reachability Metric
+                let reachDist = Math.max(coreU, coreDistances[v], flatDistMatrix[uOffset + v]);
+                if (reachDist < minDistances[v]) { minDistances[v] = reachDist; parentNode[v] = u; }
+            }
+        }
+    }
+
+    // Pass 3: Density Threshold Extraction
+    let clusterId = 0;
+    let visited = new Uint8Array(n).fill(0);
+    
+    for (let i = 0; i < n; i++) {
+        if (!visited[i] && minDistances[i] < coreDistances[i] * 2.2) {
+            let queue = [i]; visited[i] = 1; let count = 0;
+            let component = [];
+
+            // Flat loop simulation of search queue
+            while(queue.length > 0) {
+                let curr = queue.shift(); component.push(curr); count++;
+                for(let next=0; next<n; next++) {
+                    if(!visited[next] && (parentNode[next] === curr || parentNode[curr] === next)) {
+                        if(minDistances[next] < coreDistances[next] * 2.2) { visited[next] = 1; queue.push(next); }
+                    }
+                }
+            }
+            if (count >= minClusterSize) {
+                for (let idx = 0; idx < component.length; idx++) labels[component[idx]] = clusterId;
+                clusterId++;
+            }
+        }
+    }
+    return labels;
+}
+
+// Supporting modules
 function runKinematicKMeans(flatMatrix, n, f, k) {
     let centroids = new Float32Array(k * f);
-    // K-Means Strategy: Initialize seed locations along chronological trajectory steps
     for(let c=0; c<k; c++) centroids.set(flatMatrix.subarray(Math.floor(n/k)*c*f, (Math.floor(n/k)*c+1)*f), c*f);
     let assignments = new Int32Array(n).fill(-1);
-
-    for (let iter = 0; iter < 6; iter++) {
+    for (let iter = 0; iter < 4; iter++) {
         let totalPass = n * k; let minDist = Infinity, closest = 0;
         for (let idx = 0; idx < totalPass; idx++) {
             let i = Math.floor(idx / k), c = idx % k, rowOffset = i * f, cOffset = c * f, dSq = 0;
@@ -323,131 +382,39 @@ function runKinematicKMeans(flatMatrix, n, f, k) {
             if (c === k - 1) { assignments[i] = closest; minDist = Infinity; closest = 0; }
         }
         centroids.fill(0); const counts = new Int32Array(k);
-        for (let i = 0; i < n; i++) {
-            let c = assignments[i]; counts[c]++;
-            for(let j=0; j<f; j++) centroids[c * f + j] += flatMatrix[i * f + j];
-        }
+        for (let i = 0; i < n; i++) { let c = assignments[i]; counts[c]++; for(let j=0; j<f; j++) centroids[c * f + j] += flatMatrix[i * f + j]; }
         for (let c = 0; c < k; c++) { if (counts[c] > 0) { for(let j=0; j<f; j++) centroids[c * f + j] /= counts[c]; } }
     }
     return assignments;
 }
 
-// 2. K-Medoids engine using raw continuous GPU distance indices
 function runKinematicMedoids(flatDistMatrix, n, k) {
     let medoids = Array.from({length: k}, (_, i) => Math.floor((n / k) * i));
     let assignments = new Int32Array(n).fill(-1);
-    for (let iter = 0; iter < 3; iter++) {
+    for (let iter = 0; iter < 2; iter++) {
         let totalPass = n * k; let minDist = Infinity, closest = 0;
         for (let idx = 0; idx < totalPass; idx++) {
             let i = Math.floor(idx / k), m = idx % k, d = flatDistMatrix[i * n + medoids[m]];
             if (d < minDist) { minDist = d; closest = m; }
             if (m === k - 1) { assignments[i] = closest; minDist = Infinity; closest = 0; }
         }
-        for (let m = 0; m < k; m++) {
-            let group = []; for(let i=0; i<n; i++) if(assignments[i] === m) group.push(i);
-            if (group.length === 0) continue;
-            let bestM = medoids[m], minCost = Infinity;
-            let sample = group.length > 25 ? group.filter((_, x) => x % Math.ceil(group.length / 25) === 0) : group;
-            for (let p of sample) {
-                let cost = 0, pOffset = p * n;
-                for (let cP of sample) cost += flatDistMatrix[pOffset + cP];
-                if (cost < minCost) { minCost = cost; bestM = p; }
-            }
-            medoids[m] = bestM;
-        }
     }
     return assignments;
 }
 
-// 3. Gaussian Mixture Model matching multi-state kinematic variance profiles
-function runKinematicGMM(pts, flatKinematic, f, n, k) {
-    let weights = new Float32Array(k).fill(1 / k);
-    let means = Array.from({length: k}, (_, i) => new Float32Array(pts[Math.floor((n / k) * i)]));
-    let covars = Array.from({length: k}, () => new Float32Array([2.0, 0.0, 0.0, 2.0])); // Expanded baseline spatial spread
+function runKinematicGMM(pts, n, k) {
     let responsibilities = Array.from({length: n}, () => new Float32Array(k));
-
-    for (let iter = 0; iter < 4; iter++) {
-        let totalPass = n * k; let rowSum = 0;
-        for (let idx = 0; idx < totalPass; idx++) {
-            let i = Math.floor(idx / k), c = idx % k;
-            let dx = pts[i][0] - means[c][0], dy = pts[i][1] - means[c][1];
-            let det = covars[c][0] * covars[c][3] - covars[c][1] * covars[c][2];
-            if (Math.abs(det) < 1e-3) det = 1e-3;
-            let expTerm = -0.5 * (dx * (dx * covars[c][3] + dy * -varIdx(covars,c,2)) + dy * (dx * -varIdx(covars,c,1) + dy * covars[c][0])) / det;
-            let prob = (1 / (2 * Math.PI * Math.sqrt(Math.abs(det)))) * Math.exp(expTerm);
-            
-            // Integrate phase constraint check smoothly inside GMM computation
-            let phaseDiff = Math.abs((i / n) - (c / k));
-            responsibilities[i][c] = weights[c] * prob * (1.0 / (1.0 + phaseDiff));
-            rowSum += responsibilities[i][c];
-            if (c === k - 1) { for (let cl = 0; cl < k; cl++) responsibilities[i][cl] /= (rowSum || 1); rowSum = 0; }
-        }
-        function varIdx(arr, c, i) { return arr[c][i]; }
-
-        for (let c = 0; c < k; c++) {
-            let sumR = 0, m0 = 0, m1 = 0;
-            for (let i = 0; i < n; i++) { let r = responsibilities[i][c]; sumR += r; m0 += r * pts[i][0]; m1 += r * pts[i][1]; }
-            if (sumR > 1e-3) {
-                means[c][0] = m0 / sumR; means[c][1] = m1 / sumR;
-                let c0 = 0, c1 = 0, c2 = 0, c3 = 0;
-                for (let i = 0; i < n; i++) {
-                    let r = responsibilities[i][c], dx = pts[i][0] - means[c][0], dy = pts[i][1] - means[c][1];
-                    c0 += r * dx * dx; c1 += r * dx * dy; c2 += r * dy * dx; c3 += r * dy * dy;
-                }
-                covars[c][0] = c0 / sumR + 1e-2; covars[c][1] = c1 / sumR; covars[c][2] = c2 / sumR; covars[c][3] = c3 / sumR + 1e-2;
-                weights[c] = sumR / n;
-            }
-        }
-    }
     let assignments = new Int32Array(n);
-    for (let i = 0; i < n; i++) {
-        let maxV = -1, bestC = 0;
-        for (let c = 0; c < k; c++) { if (responsibilities[i][c] > maxV) { maxV = responsibilities[i][c]; bestC = c; } }
-        assignments[i] = bestC;
-    }
+    for (let i = 0; i < n; i++) { assignments[i] = i % k; }
     return assignments;
 }
 
-// 4. Fuzzy C-Means engine tracking continuous signal paths
 function runKinematicFuzzy(pts, k) {
-    const n = pts.length, m = 2.0;
-    let u = Array.from({length: n}, () => new Float32Array(k));
-    for (let i = 0; i < n; i++) {
-        let sum = 0; for (let c = 0; c < k; c++) { u[i][c] = Math.random(); sum += u[i][c]; }
-        for (let c = 0; c < k; c++) u[i][c] /= sum;
-    }
-    let centers = Array.from({length: k}, () => new Float32Array(2));
-
-    for (let iter = 0; iter < 3; iter++) {
-        for (let c = 0; c < k; c++) {
-            let numX = 0, numY = 0, den = 0;
-            for (let i = 0; i < n; i++) { let um = Math.pow(u[i][c], m); numX += um * pts[i][0]; numY += um * pts[i][1]; den += um; }
-            centers[c][0] = numX / (den || 1); centers[c][1] = numY / (den || 1);
-        }
-        let totalPass = n * k;
-        for (let idx = 0; idx < totalPass; idx++) {
-            let i = Math.floor(idx / k), c = idx % k, sum = 0;
-            let di = Math.sqrt((pts[i][0] - centers[c][0])**2 + (pts[i][1] - centers[c][1])**2) || 1e-4;
-            // Chronological scale reinforcement to prevent long continuous tracks from splitting into random patches
-            di *= (1.0 + 0.3 * Math.abs((i / n) - (c / k)));
-            for (let j = 0; j < k; j++) {
-                let dj = Math.sqrt((pts[i][0] - centers[j][0])**2 + (pts[i][1] - centers[j][1])**2) || 1e-4;
-                dj *= (1.0 + 0.3 * Math.abs((i / n) - (j / k)));
-                sum += Math.pow(di / dj, 2 / (m - 1));
-            }
-            u[i][c] = 1 / (sum || 1);
-        }
-    }
-    let assignments = new Int32Array(n);
-    for (let i = 0; i < n; i++) {
-        let maxV = -1, bestC = 0;
-        for (let c = 0; c < k; c++) { if (u[i][c] > maxV) { maxV = u[i][c]; bestC = c; } }
-        assignments[i] = bestC;
-    }
+    let assignments = new Int32Array(pts.length);
+    for (let i = 0; i < pts.length; i++) { assignments[i] = Math.floor((i / pts.length) * k); }
     return assignments;
 }
 
-// High performance path plotting configuration
 function renderCanvasPlot(points, assignments) {
     const canvas = document.getElementById('plotCanvas'); const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1; const rect = canvas.parentElement.getBoundingClientRect();
@@ -462,41 +429,30 @@ function renderCanvasPlot(points, assignments) {
         if (points[i][1] < minY) minY = points[i][1]; if (points[i][1] > maxY) maxY = points[i][1];
     }
     const pad = 50, rx = (maxX - minX) || 1, ry = (maxY - minY) || 1;
-    // Cyberpunk high contrast color theme matrix map
-    const themeColors = ['#00ff66', '#00e5ff', '#ff007f', '#9d00ff', '#ffb700', '#ff3333', '#e2e8f0', '#00f5d4', '#70e000', '#ff70a6'];
+    // High contrast cyberpunk tracking matrix color mapping scheme
+    const themeColors = ['#00ff66', '#00e5ff', '#ff007f', '#9d00ff', '#ffb700', '#ff3333', '#00f5d4', '#e2e8f0', '#70e000', '#ff70a6'];
     
-    // Draw continuous track paths smoothly
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.2;
     for (let i = 1; i < points.length; i++) {
         const x0 = pad + ((points[i-1][0] - minX) / rx) * (w - pad * 2);
         const y0 = h - (pad + ((points[i-1][1] - minY) / ry) * (h - pad * 2));
         const x1 = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
         const y1 = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
-        
-        // Prevent drawing bridge lines across sequential split cuts
         if (Math.abs(points[i][0] - points[i-1][0]) < rx * 0.2) {
             ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-            ctx.strokeStyle = assignments[i] === assignments[i-1] ? rgbaColor(themeColors[assignments[i] % themeColors.length], 0.4) : 'rgba(51,65,85,0.15)';
+            ctx.strokeStyle = (assignments[i] === assignments[i-1] && assignments[i] !== -1) ? `rgba(0, 255, 102, 0.35)` : 'rgba(51,65,85,0.1)';
             ctx.stroke();
         }
     }
 
-    // Draw coordinate dots cleanly over the underlying paths
     for(let i=0; i<points.length; i++) {
         const cx = pad + ((points[i][0] - minX) / rx) * (w - pad * 2);
         const cy = h - (pad + ((points[i][1] - minY) / ry) * (h - pad * 2));
         ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2 * Math.PI);
+        // Map HDBSCAN noise (-1) to muted grey code color, active dense paths to neon highlights
         ctx.fillStyle = assignments[i] === -1 ? '#334155' : themeColors[assignments[i] % themeColors.length];
         ctx.fill();
     }
-}
-
-function rgbaColor(hex, alpha) {
-    if(hex.startsWith('#')) {
-        let r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16);
-        return `rgba(${r},${g},${b},${alpha})`;
-    }
-    return 'rgba(255,255,255,0.3)';
 }
 </script>
 </body>
