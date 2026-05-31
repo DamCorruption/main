@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Attributes & Calculations Dashboard</title>
+    <style>
+        :root {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --accent-blue: #38bdf8;
+            --accent-green: #4ade80;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 2.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1.5rem;
+        }
+
+        h1 {
+            color: var(--accent-blue);
+            margin: 0 0 0.5rem 0;
+            font-size: 2.25rem;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Interactive Filter Tabs */
+        .filter-section {
+            background-color: var(--bg-card);
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+
+        .filter-title {
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .filter-btn {
+            background-color: #0f172a;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-main);
+        }
+
+        .filter-btn.active {
+            background-color: var(--accent-blue);
+            color: #000;
+            border-color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        /* Cards */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s, border-color 0.2s;
+            position: relative;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: #475569;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .key-badge {
+            font-family: monospace;
+            background-color: #0f172a;
+            color: var(--accent-green);
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+        }
+
+        .category-tag {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .cat-pos { background-color: rgba(56, 189, 248, 0.15); color: var(--accent-blue); }
+        .cat-vel { background-color: rgba(168, 85, 247, 0.15); color: #c084fc; }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin: 0 0 0.5rem 0;
+        }
+
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            flex-grow: 1;
+        }
+
+        .math-block {
+            background-color: #0f172a;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: #e2e8f0;
+            overflow-x: auto;
+            border-left: 3px solid var(--accent-blue);
+            margin-bottom: 1rem;
+        }
+
+        .used-by {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            padding-top: 0.75rem;
+        }
+
+        .entity-pill {
+            background: #334155;
+            color: #cbd5e1;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        /* Utility class for filter fading */
+        .dimmed {
+            opacity: 0.25;
+            transform: scale(0.98);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Attributes & Vector Calculations</h1>
+        <p class="subtitle">System reference sheet mapping calculation logic, variables, and game object usage contexts.</p>
+    </header>
+
+    <div class="filter-section">
+        <div class="filter-title">
+            <span>⚡ Interactive Matrix Filter:</span>
+        </div>
+        <div class="btn-group">
+            <button class="filter-btn active" onclick="filterEntities('all')">Show All Data Keys</button>
+            <button class="filter-btn" onclick="filterEntities('ball')">Used by: 'ball'</button>
+            <button class="filter-btn" onclick="filterEntities('self')">Used by: 'self'</button>
+            <button class="filter-btn" onclick="filterEntities('other')">Used by: 'other'</button>
+        </div>
+    </div>
+
+    <div class="grid">
+
+        <div class="card" data-entities="ball self other">
+            <div class="card-header">
+                <span class="key-badge">tgxs</span>
+                <span class="category-tag cat-pos">Positioning</span>
+            </div>
+            <div class="card-title">To Goal X (Same Team)</div>
+            <div class="card-desc">Measures the horizontal distance between the target item and its own team's goal line.</div>
+            <div class="math-block">
+xI = item.x - centerX;<br>
+goalX = me.team === 2 ? red : blue;<br>
+result = xI - goalX;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">ball</span>
+                <span class="entity-pill">self</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="ball self other">
+            <div class="card-header">
+                <span class="key-badge">tgxo</span>
+                <span class="category-tag cat-pos">Positioning</span>
+            </div>
+            <div class="card-title">To Goal X (Opponent Team)</div>
+            <div class="card-desc">Measures the horizontal distance between the target item and the opposing team's goal line.</div>
+            <div class="math-block">
+xI = item.x - centerX;<br>
+goalX = me.team === 3 ? red : blue;<br>
+result = xI - goalX;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">ball</span>
+                <span class="entity-pill">self</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="ball self other">
+            <div class="card-header">
+                <span class="key-badge">tgyt</span>
+                <span class="category-tag cat-pos">Positioning</span>
+            </div>
+            <div class="card-title">To Goal Y (Top Post)</div>
+            <div class="card-desc">Measures vertical tracking distance between the item and the upper goalpost crosshair line.</div>
+            <div class="math-block">
+yI = item.y - centerY;<br>
+result = yI - goalYTop;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">ball</span>
+                <span class="entity-pill">self</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="ball self other">
+            <div class="card-header">
+                <span class="key-badge">tgyb</span>
+                <span class="category-tag cat-pos">Positioning</span>
+            </div>
+            <div class="card-title">To Goal Y (Bottom Post)</div>
+            <div class="card-desc">Measures vertical tracking distance between the item and the lower goalpost boundary limits.</div>
+            <div class="math-block">
+yI = item.y - centerY;<br>
+result = yI - goalYBottom;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">ball</span>
+                <span class="entity-pill">self</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="self other">
+            <div class="card-header">
+                <span class="key-badge">tbx</span>
+                <span class="category-tag cat-pos">Relative Position</span>
+            </div>
+            <div class="card-title">Distance to Ball X</div>
+            <div class="card-desc">Calculates the relative horizontal spacing delta scalar layout between the entity and the ball.</div>
+            <div class="math-block">
+xI = item.x - centerX;<br>
+ballx = ball.x - centerX;<br>
+result = xI - ballx;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">self</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="self other">
+            <div class="card-header">
+                <span class="key-badge">tby</span>
+                <span class="category-tag cat-pos">Relative Position</span>
+            </div>
+            <div class="card-title">Distance to Ball Y</div>
+            <div class="card-desc">Calculates vertical distance separating an active system runner element or opponent away from ball.</div>
+            <div class="math-block">
+yI = item.y - centerY;<br>
+bally = ball.y - centerY;<br>
+result = yI - bally;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">self</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="self">
+            <div class="card-header">
+                <span class="key-badge">rvxm / rvym</span>
+                <span class="category-tag cat-vel">Normalized Velocity</span>
+            </div>
+            <div class="card-title">My Relative Velocity Vector</div>
+            <div class="card-desc">Computes normalized unit heading vectors of your player relative to current Ball speed momentum values.</div>
+            <div class="math-block">
+relX = item.xv - ball.xv;<br>
+speed = Math.hypot(relX, relY);<br>
+return speed === 0 ? 0 : relX / speed;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">self</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="ball">
+            <div class="card-header">
+                <span class="key-badge">rvxb / rvyb</span>
+                <span class="category-tag cat-vel">Normalized Velocity</span>
+            </div>
+            <div class="card-title">Ball Relative Velocity Vector</div>
+            <div class="card-desc">Yields directional unit velocity vectors mapping exactly how the ball accelerates or tracks against you.</div>
+            <div class="math-block">
+relX = item.xv - me.xv;<br>
+speed = Math.hypot(relX, relY);<br>
+return speed === 0 ? 0 : relX / speed;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">ball</span>
+            </div>
+        </div>
+
+        <div class="card" data-entities="other">
+            <div class="card-header">
+                <span class="key-badge">rvxi / rvyi</span>
+                <span class="category-tag cat-vel">Normalized Velocity</span>
+            </div>
+            <div class="card-title">Intercept Tracking Velocity</div>
+            <div class="card-desc">Measures normalized heading velocity adjustments against the midpoint average speed vectors of Me + Ball.</div>
+            <div class="math-block">
+refX = (me.xv + ball.xv) / 2;<br>
+relX = item.xv - refX;<br>
+speed = Math.hypot(relX, relY);<br>
+return speed === 0 ? 0 : relX / speed;
+            </div>
+            <div class="used-by">
+                <span>Targets:</span>
+                <span class="entity-pill">other</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    function filterEntities(targetEntity) {
+        // Handle Active states button coloring switcher
+        const buttons = document.querySelectorAll('.filter-btn');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        // Toggle visibility/dimming states on metrics matrix
+        const cards = document.querySelectorAll('.card');
+        cards.forEach(card => {
+            const allowedEntities = card.getAttribute('data-entities').split(' ');
+            if (targetEntity === 'all' || allowedEntities.includes(targetEntity)) {
+                card.classList.remove('dimmed');
+            } else {
+                card.classList.add('dimmed');
+            }
+        });
+    }
+</script>
+</body>
+</html>
