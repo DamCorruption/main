@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Logic Lab — Circuit Builder & RAM Tutorial</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root {
+  --bg:#060a06;--bg-panel:#0c140c;--bg-card:#111a11;--border:#1a3020;--border-light:#2a4a30;
+  --text:#d0e8d0;--text-dim:#5a7a5a;--text-bright:#f0fff0;--accent:#00ff88;--accent-dim:#00aa5c;
+  --high:#00ff88;--low:#1a2a1a;--danger:#ff4444;--warning:#ffaa00;--gate-fill:#0a1a0e;--gate-stroke:#1a4025;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;width:100vw;}
+#app{display:flex;flex-direction:column;height:100vh;width:100vw;}
+
+/* Toolbar */
+#toolbar{display:flex;align-items:center;justify-content:space-between;height:48px;background:var(--bg-panel);border-bottom:1px solid var(--border);padding:0 8px;z-index:100;flex-shrink:0;gap:4px;}
+.toolbar-left{display:flex;align-items:center;gap:8px;min-width:0;}
+.logo{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--accent);letter-spacing:2px;white-space:nowrap;}
+.toolbar-center{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;overflow-x:auto;}
+.toolbar-right{display:flex;align-items:center;gap:4px;}
+.separator{width:1px;height:24px;background:var(--border);margin:0 4px;flex-shrink:0;}
+.icon-btn{background:none;border:1px solid transparent;color:var(--text-dim);width:34px;height:34px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .15s;}
+.icon-btn:hover{color:var(--text);background:var(--bg-card);border-color:var(--border);}
+.mode-btn{background:none;border:1px solid transparent;color:var(--text-dim);width:38px;height:34px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;}
+.mode-btn:hover{color:var(--text);background:var(--bg-card);}
+.mode-btn.active{color:var(--accent);background:rgba(0,255,136,.08);border-color:var(--accent-dim);}
+.accent-btn{background:rgba(0,255,136,.1);border:1px solid var(--accent-dim);color:var(--accent);padding:0 12px;height:32px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.accent-btn:hover{background:rgba(0,255,136,.18);}
+
+/* Sidebar */
+#sidebar{width:160px;background:var(--bg-panel);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;padding:8px;transition:transform .25s ease;z-index:90;}
+#sidebar.collapsed{transform:translateX(-100%);position:absolute;height:calc(100vh - 48px);top:48px;}
+.sidebar-section{margin-bottom:12px;}
+.sidebar-section h3{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:6px;padding-left:4px;}
+.palette-grid{display:flex;flex-direction:column;gap:3px;}
+.palette-btn{background:var(--bg-card);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;text-align:left;transition:all .15s;display:flex;align-items:center;gap:6px;}
+.palette-btn:hover{border-color:var(--accent-dim);color:var(--accent);background:rgba(0,255,136,.05);}
+.palette-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,255,136,.1);box-shadow:0 0 8px rgba(0,255,136,.15);}
+.palette-icon{width:16px;height:16px;border-radius:3px;display:inline-block;flex-shrink:0;}
+.switch-icon{background:var(--low);border:1px solid var(--border-light);}
+.led-icon{background:var(--low);border-radius:50%;}
+.clock-icon{background:var(--bg);border:1px solid var(--border-light);position:relative;}
+.clock-icon::after{content:'';position:absolute;top:2px;left:50%;width:1px;height:5px;background:var(--text-dim);transform-origin:bottom center;transform:translateX(-50%);}
+
+/* Canvas */
+#canvas-container{flex:1;position:relative;overflow:hidden;background:var(--bg);}
+#circuit-canvas{display:block;width:100%;height:100%;cursor:grab;}
+#circuit-canvas.wiring{cursor:crosshair;}
+#circuit-canvas.deleting{cursor:not-allowed;}
+#circuit-canvas.placing{cursor:cell;}
+#canvas-hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-dim);background:rgba(6,10,6,.8);padding:4px 12px;border-radius:20px;pointer-events:none;transition:opacity .3s;}
+#zoom-indicator{position:absolute;top:8px;right:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:rgba(6,10,6,.8);padding:3px 8px;border-radius:4px;pointer-events:none;}
+
+/* Tutorial Panel */
+#tutorial-overlay{position:fixed;top:48px;right:0;bottom:0;width:380px;max-width:100vw;background:var(--bg-panel);border-left:1px solid var(--border);z-index:200;transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;}
+#tutorial-overlay.open{transform:translateX(0);}
+.tutorial-header{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.tutorial-header h2{font-size:16px;font-weight:700;color:var(--text-bright);}
+#tutorial-content{flex:1;overflow-y:auto;padding:16px;line-height:1.7;font-size:13px;}
+#tutorial-content h3{color:var(--accent);font-size:14px;margin:16px 0 8px;font-weight:700;}
+#tutorial-content h3:first-child{margin-top:0;}
+#tutorial-content p{margin-bottom:10px;color:var(--text);}
+#tutorial-content code{font-family:'JetBrains Mono',monospace;background:var(--bg-card);padding:1px 5px;border-radius:3px;font-size:12px;color:var(--accent);}
+#tutorial-content pre{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:10px;margin:10px 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5;color:var(--text-dim);}
+#tutorial-content .truth-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px;}
+#tutorial-content .truth-table th,#tutorial-content .truth-table td{border:1px solid var(--border);padding:4px 10px;text-align:center;font-family:'JetBrains Mono',monospace;}
+#tutorial-content .truth-table th{background:var(--bg-card);color:var(--accent);font-weight:600;}
+#tutorial-content .truth-table td{color:var(--text);}
+#tutorial-content .highlight{color:var(--accent);font-weight:600;}
+#tutorial-content .warning{color:var(--warning);font-weight:600;}
+.tutorial-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;}
+.tutorial-nav button{background:var(--bg-card);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;transition:all .15s;display:flex;align-items:center;gap:6px;}
+.tutorial-nav button:hover{border-color:var(--accent-dim);color:var(--accent);}
+.tutorial-nav button:disabled{opacity:.3;cursor:default;border-color:var(--border);color:var(--text-dim);}
+#tutorial-step-indicator{font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;}
+
+/* Toast */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--bg-card);border:1px solid var(--accent-dim);color:var(--accent);padding:8px 20px;border-radius:8px;font-size:13px;z-index:999;transition:transform .3s ease;pointer-events:none;}
+#toast.show{transform:translateX(-50%) translateY(0);}
+
+.hidden{display:none!important;}
+
+/* Mobile */
+.mobile-only{display:none!important;}
+@media(max-width:700px){
+  .mobile-only{display:flex!important;}
+  #sidebar{position:absolute;height:calc(100vh - 48px);top:48px;left:0;transform:translateX(-100%);z-index:95;}
+  #sidebar.open{transform:translateX(0);}
+  #sidebar.collapsed{transform:translateX(-100%);}
+  .accent-btn span{display:none;}
+  #tutorial-overlay{width:100vw;}
+  .logo{font-size:12px;letter-spacing:1px;}
+}
+@media(prefers-reduced-motion:reduce){
+  *{transition-duration:0s!important;animation-duration:0s!important;}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="toolbar">
+    <div class="toolbar-left">
+      <button id="btn-menu" class="icon-btn mobile-only"><i class="fas fa-bars"></i></button>
+      <span class="logo">LOGIC LAB</span>
+    </div>
+    <div class="toolbar-center">
+      <button class="mode-btn active" data-mode="select" title="Select & Move"><i class="fas fa-mouse-pointer"></i></button>
+      <button class="mode-btn" data-mode="wire" title="Draw Wire"><i class="fas fa-bezier-curve"></i></button>
+      <button class="mode-btn" data-mode="delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
+      <div class="separator"></div>
+      <button id="btn-zoom-in" class="icon-btn" title="Zoom In"><i class="fas fa-search-plus"></i></button>
+      <button id="btn-zoom-out" class="icon-btn" title="Zoom Out"><i class="fas fa-search-minus"></i></button>
+      <button id="btn-zoom-fit" class="icon-btn" title="Fit View"><i class="fas fa-compress-arrows-alt"></i></button>
+      <div class="separator"></div>
+      <button id="btn-clock-step" class="icon-btn" title="Clock Step"><i class="fas fa-step-forward"></i></button>
+      <button id="btn-clear" class="icon-btn" title="Clear All"><i class="fas fa-eraser"></i></button>
+    </div>
+    <div class="toolbar-right">
+      <button id="btn-tutorial" class="accent-btn"><i class="fas fa-graduation-cap"></i> <span>Tutorials</span></button>
+    </div>
+  </header>
+
+  <aside id="sidebar">
+    <div class="sidebar-section">
+      <h3>I/O</h3>
+      <div class="palette-grid">
+        <button class="palette-btn" data-type="SWITCH"><span class="palette-icon switch-icon"></span>Switch</button>
+        <button class="palette-btn" data-type="LED"><span class="palette-icon led-icon"></span>LED</button>
+        <button class="palette-btn" data-type="CLOCK"><span class="palette-icon clock-icon"></span>Clock</button>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <h3>Basic Gates</h3>
+      <div class="palette-grid">
+        <button class="palette-btn" data-type="AND">AND</button>
+        <button class="palette-btn" data-type="OR">OR</button>
+        <button class="palette-btn" data-type="NOT">NOT</button>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <h3>Inverted Gates</h3>
+      <div class="palette-grid">
+        <button class="palette-btn" data-type="NAND">NAND</button>
+        <button class="palette-btn" data-type="NOR">NOR</button>
+        <button class="palette-btn" data-type="XOR">XOR</button>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <h3>Memory Blocks</h3>
+      <div class="palette-grid">
+        <button class="palette-btn" data-type="D_FLIPFLOP">D Flip-Flop</button>
+        <button class="palette-btn" data-type="RAM_CELL">RAM Cell</button>
+      </div>
+    </div>
+  </aside>
+
+  <main id="canvas-container">
+    <canvas id="circuit-canvas"></canvas>
+    <div id="canvas-hint">Scroll to zoom, drag to pan, click ports to wire</div>
+    <div id="zoom-indicator">100%</div>
+  </main>
+
+  <div id="tutorial-overlay">
+    <div class="tutorial-header">
+      <h2 id="tutorial-title"></h2>
+      <button id="btn-tutorial-close" class="icon-btn"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="tutorial-content"></div>
+    <div class="tutorial-nav">
+      <button id="btn-tut-prev"><i class="fas fa-chevron-left"></i> Prev</button>
+      <span id="tutorial-step-indicator"></span>
+      <button id="btn-tut-next">Next <i class="fas fa-chevron-right"></i></button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+/* ================================================================
+   LOGIC LAB — Complete Circuit Builder & RAM Tutorial
+   ================================================================ */
+
+// ── Gate & Component Definitions ──
+const GATE_DEFS = {
+  SWITCH: {
+    w:56, h:32, inputs:[], outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp,st){ return {Q:st.on}; },
+    label:'SW'
+  },
+  LED: {
+    w:28, h:28, inputs:[{name:'IN',rx:0,ry:0.5}], outputs:[],
+    compute(){ return {}; }, label:''
+  },
+  CLOCK: {
+    w:56, h:32, inputs:[], outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp,st){ return {Q:st.on}; },
+    label:'CLK'
+  },
+  AND: {
+    w:64, h:44, inputs:[{name:'A',rx:0,ry:0.28},{name:'B',rx:0,ry:0.72}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp){ return {Q: !!(inp.A && inp.B)}; }, label:'AND'
+  },
+  OR: {
+    w:64, h:44, inputs:[{name:'A',rx:0,ry:0.28},{name:'B',rx:0,ry:0.72}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp){ return {Q: !!(inp.A || inp.B)}; }, label:'OR'
+  },
+  NOT: {
+    w:52, h:34, inputs:[{name:'A',rx:0,ry:0.5}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp){ return {Q: !inp.A}; }, label:'NOT'
+  },
+  NAND: {
+    w:64, h:44, inputs:[{name:'A',rx:0,ry:0.28},{name:'B',rx:0,ry:0.72}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp){ return {Q: !(inp.A && inp.B)}; }, label:'NAND'
+  },
+  NOR: {
+    w:64, h:44, inputs:[{name:'A',rx:0,ry:0.28},{name:'B',rx:0,ry:0.72}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp){ return {Q: !(inp.A || inp.B)}; }, label:'NOR'
+  },
+  XOR: {
+    w:64, h:44, inputs:[{name:'A',rx:0,ry:0.28},{name:'B',rx:0,ry:0.72}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp){ return {Q: inp.A !== inp.B}; }, label:'XOR'
+  },
+  D_FLIPFLOP: {
+    w:80, h:64, inputs:[{name:'D',rx:0,ry:0.3},{name:'CLK',rx:0,ry:0.7}],
+    outputs:[{name:'Q',rx:1,ry:0.3},{name:'Q\u0305',rx:1,ry:0.7}],
+    compute(inp,st){
+      if(inp.CLK && !st.prevClk && !st.edgeDone){ st.q=inp.D; st.edgeDone=true; }
+      const q=!!st.q;
+      return {Q:q, 'Q\u0305':!q};
+    },
+    updateState(st,inp){ st.prevClk=inp.CLK; st.edgeDone=false; },
+    label:'D-FF'
+  },
+  RAM_CELL: {
+    w:90, h:70, inputs:[{name:'D',rx:0,ry:0.25},{name:'WE',rx:0,ry:0.5},{name:'CLK',rx:0,ry:0.75}],
+    outputs:[{name:'Q',rx:1,ry:0.5}],
+    compute(inp,st){
+      if(inp.WE && inp.CLK && !st.prevClk && !st.edgeDone){ st.stored=inp.D; st.edgeDone=true; }
+      return {Q:!!st.stored};
+    },
+    updateState(st,inp){ st.prevClk=inp.CLK; st.edgeDone=false; },
+    label:'RAM'
+  }
+};
+
+// ── State ──
+let components = [], wires = [], nextId = 1;
+let camera = {x:0, y:0, zoom:1};
+let mode = 'select'; // select, wire, delete, place
+let placeType = null;
+let selectedId = null;
+let dragging = null; // {id, offX, offY}
+let wiringFrom = null; // {compId, portType, portIdx, x, y}
+let mouseWorld = {x:0, y:0};
+let panning = false, panStart = {x:0,y:0}, camStart = {x:0,y:0};
+let touchDist = 0;
+let currentTutorial = -1;
+
+const canvas = document.getElementById('circuit-canvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvas-container');
+let dpr = window.devicePixelRatio || 1;
+
+// ── Coordinate Transforms ──
+function screenToWorld(sx, sy) {
+  const w = canvas.width / dpr, h = canvas.height / dpr;
+  return { x: (sx - w/2)/camera.zoom + camera.x, y: (sy - h/2)/camera.zoom + camera.y };
+}
+function worldToScreen(wx, wy) {
+  const w = canvas.width / dpr, h = canvas.height / dpr;
+  return { x: (wx - camera.x)*camera.zoom + w/2, y: (wy - camera.y)*camera.zoom + h/2 };
+}
+
+// ── Port Helpers ──
+function getPortPos(comp, ptype, pidx) {
+  const def = GATE_DEFS[comp.type];
+  const ports = ptype==='input' ? def.inputs : def.outputs;
+  const p = ports[pidx];
+  return { x: comp.x + p.rx * def.w, y: comp.y + p.ry * def.h };
+}
+
+function getInputValues(comp) {
+  const def = GATE_DEFS[comp.type];
+  const vals = {};
+  def.inputs.forEach((p,i) => {
+    const w = wires.find(w => w.toId === comp.id && w.toPort === i);
+    if(w) {
+      const src = components.find(c => c.id === w.fromId);
+      vals[p.name] = src ? src.outputs[w.fromPort] : false;
+    } else vals[p.name] = false;
+  });
+  return vals;
+}
+
+function getWireValue(wire) {
+  const src = components.find(c => c.id === wire.fromId);
+  return src ? src.outputs[wire.fromPort] : false;
+}
+
+// ── Simulation ──
+function simulate() {
+  for(let iter=0; iter<30; iter++) {
+    let changed = false;
+    for(const comp of components) {
+      const def = GATE_DEFS[comp.type];
+      if(!def.compute) continue;
+      const inp = getInputValues(comp);
+      const result = def.compute(inp, comp.state);
+      for(let i=0; i<def.outputs.length; i++){
+        const name = def.outputs[i].name;
+        if(comp.outputs[i] !== result[name]){
+          comp.outputs[i] = result[name];
+          changed = true;
+        }
+      }
+    }
+    if(!changed) break;
+  }
+  // Post-sim state update for edge-triggered components
+  for(const comp of components) {
+    const def = GATE_DEFS[comp.type];
+    if(def.updateState) def.updateState(comp.state, getInputValues(comp));
+  }
+}
+
+// ── Component Creation ──
+function createComponent(type, x, y, state) {
+  const def = GATE_DEFS[type];
+  if(!def) return null;
+  const comp = {
+    id: nextId++, type, x, y,
+    state: state || {on:false, q:false, stored:false, prevClk:false, edgeDone:false},
+    outputs: def.outputs.map(() => false)
+  };
+  if(type==='SWITCH') comp.state.on = false;
+  if(type==='CLOCK') comp.state.on = false;
+  components.push(comp);
+  simulate();
+  return comp;
+}
+
+function removeComponent(id) {
+  wires = wires.filter(w => w.fromId !== id && w.toId !== id);
+  components = components.filter(c => c.id !== id);
+  if(selectedId === id) selectedId = null;
+  simulate();
+}
+
+function addWire(fromId, fromPort, toId, toPort) {
+  // Remove existing wire to same input
+  wires = wires.filter(w => !(w.toId===toId && w.toPort===toPort));
+  // Prevent connecting output to output or input to input
+  wires.push({fromId, fromPort, toId, toPort});
+  simulate();
+}
+
+function removeWire(idx) {
+  wires.splice(idx, 1);
+  simulate();
+}
+
+// ── Hit Testing ──
+const PORT_R = 7;
+function hitPort(wx, wy) {
+  for(const comp of components) {
+    const def = GATE_DEFS[comp.type];
+    for(let i=0; i<def.inputs.length; i++){
+      const p = getPortPos(comp,'input',i);
+      if(Math.hypot(wx-p.x, wy-p.y) < PORT_R+4) return {compId:comp.id, ptype:'input', pidx:i, x:p.x, y:p.y};
+    }
+    for(let i=0; i<def.outputs.length; i++){
+      const p = getPortPos(comp,'output',i);
+      if(Math.hypot(wx-p.x, wy-p.y) < PORT_R+4) return {compId:comp.id, ptype:'output', pidx:i, x:p.x, y:p.y};
+    }
+  }
+  return null;
+}
+
+function hitComponent(wx, wy) {
+  for(let i=components.length-1; i>=0; i--){
+    const c = components[i], d = GATE_DEFS[c.type];
+    if(wx>=c.x && wx<=c.x+d.w && wy>=c.y && wy<=c.y+d.h) return c;
+  }
+  return null;
+}
+
+function hitWire(wx, wy) {
+  for(let i=0; i<wires.length; i++){
+    const w = wires[i];
+    const fc = components.find(c=>c.id===w.fromId);
+    const tc = components.find(c=>c.id===w.toId);
+    if(!fc||!tc) continue;
+    const a = getPortPos(fc,'output',w.fromPort);
+    const b = getPortPos(tc,'input',w.toPort);
+    if(distToBezier(wx,wy,a.x,a.y,b.x,b.y) < 8) return i;
+  }
+  return -1;
+}
+
+function distToBezier(px,py,x0,y0,x1,y1) {
+  const dx = Math.abs(x1-x0)*0.5;
+  let minD = Infinity;
+  for(let t=0; t<=1; t+=0.05){
+    const it=1-t;
+    const bx = it*it*it*x0 + 3*it*it*t*(x0+dx) + 3*it*t*t*(x1-dx) + t*t*t*x1;
+    const by = it*it*it*y0 + 3*it*it*t*y0 + 3*it*t*t*y1 + t*t*t*y1;
+    minD = Math.min(minD, Math.hypot(px-bx, py-by));
+  }
+  return minD;
+}
+
+// ── Drawing ──
+function render() {
+  const w = canvas.width/dpr, h = canvas.height/dpr;
+  ctx.save();
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+
+  // Background gradient
+  const bg = ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,w*0.7);
+  bg.addColorStop(0,'#0a120a');
+  bg.addColorStop(1,'#040804');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,w,h);
+
+  ctx.save();
+  ctx.translate(w/2, h/2);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-camera.x, -camera.y);
+
+  drawGrid(w, h);
+
+  // Wires
+  wires.forEach((wire,i) => drawWire(wire, i === hitWire(mouseWorld.x, mouseWorld.y) && mode==='delete'));
+
+  // Temp wire
+  if(wiringFrom) {
+    const a = {x:wiringFrom.x, y:wiringFrom.y};
+    const b = mouseWorld;
+    const dx = Math.abs(b.x-a.x)*0.5;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.bezierCurveTo(a.x+dx, a.y, b.x-dx, b.y, b.x, b.y);
+    ctx.strokeStyle = 'rgba(0,255,136,0.5)';
+    ctx.lineWidth = 2.5/camera.zoom;
+    ctx.setLineDash([6/camera.zoom, 4/camera.zoom]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Components
+  components.forEach(c => drawComponent(c));
+
+  ctx.restore();
+
+  // HUD
+  document.getElementById('zoom-indicator').textContent = Math.round(camera.zoom*100)+'%';
+
+  ctx.restore();
+  requestAnimationFrame(render);
+}
+
+function drawGrid(w,h) {
+  const gs = 20;
+  const tl = screenToWorld(0,0);
+  const br = screenToWorld(w,h);
+  const sx = Math.floor(tl.x/gs)*gs;
+  const sy = Math.floor(tl.y/gs)*gs;
+
+  ctx.strokeStyle = '#0f1a0f';
+  ctx.lineWidth = 0.5/camera.zoom;
+  ctx.beginPath();
+  for(let x=sx; x<br.x; x+=gs){ ctx.moveTo(x,tl.y); ctx.lineTo(x,br.y); }
+  for(let y=sy; y<br.y; y+=gs){ ctx.moveTo(tl.x,y); ctx.lineTo(br.x,y); }
+  ctx.stroke();
+
+  // Major grid
+  const mgs = 100;
+  const msx = Math.floor(tl.x/mgs)*mgs;
+  const msy = Math.floor(tl.y/mgs)*mgs;
+  ctx.strokeStyle = '#152015';
+  ctx.lineWidth = 1/camera.zoom;
+  ctx.beginPath();
+  for(let x=msx; x<br.x; x+=mgs){ ctx.moveTo(x,tl.y); ctx.lineTo(x,br.y); }
+  for(let y=msy; y<br.y; y+=mgs){ ctx.moveTo(tl.x,y); ctx.lineTo(br.x,y); }
+  ctx.stroke();
+}
+
+function drawWire(wire, highlight) {
+  const fc = components.find(c=>c.id===wire.fromId);
+  const tc = components.find(c=>c.id===wire.toId);
+  if(!fc||!tc) return;
+  const a = getPortPos(fc,'output',wire.fromPort);
+  const b = getPortPos(tc,'input',wire.toPort);
+  const val = getWireValue(wire);
+  const dx = Math.abs(b.x-a.x)*0.5;
+
+  // Glow for high signal
+  if(val) {
+    ctx.beginPath();
+    ctx.moveTo(a.x,a.y);
+    ctx.bezierCurveTo(a.x+dx,a.y,b.x-dx,b.y,b.x,b.y);
+    ctx.strokeStyle = 'rgba(0,255,136,0.15)';
+    ctx.lineWidth = 8/camera.zoom;
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(a.x,a.y);
+  ctx.bezierCurveTo(a.x+dx,a.y,b.x-dx,b.y,b.x,b.y);
+  ctx.strokeStyle = highlight ? '#ff4444' : (val ? '#00ff88' : '#1e2e1e');
+  ctx.lineWidth = (highlight ? 3.5 : 2.5)/camera.zoom;
+  ctx.stroke();
+}
+
+function drawComponent(comp) {
+  const def = GATE_DEFS[comp.type];
+  const {x,y,w,h} = {x:comp.x, y:comp.y, w:def.w, h:def.h};
+  const sel = comp.id === selectedId;
+
+  ctx.save();
+
+  // Shadow for selected
+  if(sel) {
+    ctx.shadowColor = 'rgba(0,255,136,0.3)';
+    ctx.shadowBlur = 12/camera.zoom;
+  }
+
+  // Draw shape
+  const isIO = comp.type==='SWITCH'||comp.type==='LED'||comp.type==='CLOCK';
+  const isMacro = comp.type==='D_FLIPFLOP'||comp.type==='RAM_CELL';
+
+  if(isIO) drawIOShape(comp);
+  else if(isMacro) drawMacroShape(comp);
+  else drawGateShape(comp);
+
+  ctx.restore();
+
+  // Ports
+  const pr = 5/camera.zoom;
+  def.inputs.forEach((p,i) => {
+    const pos = getPortPos(comp,'input',i);
+    const connected = wires.some(w=>w.toId===comp.id && w.toPort===i);
+    const val = connected ? getWireValue(wires.find(w=>w.toId===comp.id && w.toPort===i)) : false;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, pr, 0, Math.PI*2);
+    ctx.fillStyle = val ? '#00ff88' : '#0a1a0e';
+    ctx.fill();
+    ctx.strokeStyle = val ? '#00ff88' : '#2a4a30';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+  });
+  def.outputs.forEach((p,i) => {
+    const pos = getPortPos(comp,'output',i);
+    const val = comp.outputs[i];
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, pr, 0, Math.PI*2);
+    ctx.fillStyle = val ? '#00ff88' : '#0a1a0e';
+    ctx.fill();
+    ctx.strokeStyle = val ? '#00ff88' : '#2a4a30';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+  });
+
+  // Label
+  if(def.label) {
+    ctx.font = `bold ${Math.max(9, 10/camera.zoom)}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = sel ? '#00ff88' : '#8aaa8a';
+    if(isMacro) {
+      ctx.fillText(def.label, x+w/2, y+h/2);
+    } else if(!isIO) {
+      // Gate label below
+      ctx.fillText(def.label, x+w/2, y+h+10/camera.zoom);
+    }
+  }
+
+  // Port labels for macros
+  if(isMacro) {
+    ctx.font = `${Math.max(7, 8/camera.zoom)}px 'JetBrains Mono', monospace`;
+    ctx.fillStyle = '#5a7a5a';
+    ctx.textAlign = 'right';
+    def.inputs.forEach((p,i) => {
+      const pos = getPortPos(comp,'input',i);
+      ctx.fillText(p.name, pos.x - 8/camera.zoom, pos.y + 3/camera.zoom);
+    });
+    ctx.textAlign = 'left';
+    def.outputs.forEach((p,i) => {
+      const pos = getPortPos(comp,'output',i);
+      ctx.fillText(p.name, pos.x + 8/camera.zoom, pos.y + 3/camera.zoom);
+    });
+  }
+}
+
+function drawGateShape(comp) {
+  const {x,y} = comp;
+  const def = GATE_DEFS[comp.type];
+  const w = def.w, h = def.h;
+  const sel = comp.id === selectedId;
+
+  ctx.beginPath();
+  switch(comp.type) {
+    case 'AND': case 'NAND':
+      ctx.moveTo(x,y); ctx.lineTo(x+w*0.5,y);
+      ctx.arc(x+w*0.5, y+h/2, h/2, -Math.PI/2, Math.PI/2);
+      ctx.lineTo(x,y+h); ctx.closePath();
+      break;
+    case 'OR': case 'NOR': case 'XOR':
+      ctx.moveTo(x,y);
+      ctx.bezierCurveTo(x+w*0.5,y, x+w*0.7,y, x+w,y+h/2);
+      ctx.bezierCurveTo(x+w*0.7,y+h, x+w*0.5,y+h, x,y+h);
+      ctx.quadraticCurveTo(x+w*0.18, y+h/2, x,y);
+      break;
+    case 'NOT':
+      ctx.moveTo(x,y); ctx.lineTo(x+w*0.78,y+h/2); ctx.lineTo(x,y+h); ctx.closePath();
+      break;
+  }
+
+  ctx.fillStyle = sel ? 'rgba(0,255,136,0.08)' : '#0a1a0e';
+  ctx.fill();
+  ctx.strokeStyle = sel ? '#00ff88' : '#1a4025';
+  ctx.lineWidth = 1.5/camera.zoom;
+  ctx.stroke();
+
+  // Bubble for inverted gates
+  if(['NOT','NAND','NOR'].includes(comp.type)) {
+    const bx = comp.type==='NOT' ? x+w*0.78+5/camera.zoom : x+w-1+5/camera.zoom;
+    const br = 4/camera.zoom;
+    ctx.beginPath();
+    ctx.arc(bx, y+h/2, br, 0, Math.PI*2);
+    ctx.fillStyle = sel ? 'rgba(0,255,136,0.08)' : '#0a1a0e';
+    ctx.fill();
+    ctx.strokeStyle = sel ? '#00ff88' : '#1a4025';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+  }
+
+  // XOR extra curve
+  if(comp.type==='XOR') {
+    ctx.beginPath();
+    ctx.moveTo(x-4/camera.zoom, y);
+    ctx.quadraticCurveTo(x+w*0.14, y+h/2, x-4/camera.zoom, y+h);
+    ctx.strokeStyle = sel ? '#00ff88' : '#1a4025';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+  }
+}
+
+function drawIOShape(comp) {
+  const {x,y} = comp;
+  const def = GATE_DEFS[comp.type];
+  const w = def.w, h = def.h;
+  const sel = comp.id === selectedId;
+  const r = 4/camera.zoom;
+
+  if(comp.type==='SWITCH') {
+    const on = comp.state.on;
+    // Body
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = on ? 'rgba(0,255,136,0.15)' : '#0a1a0e';
+    ctx.fill();
+    ctx.strokeStyle = on ? '#00ff88' : '#1a4025';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+    // Toggle indicator
+    const tx = x + 14/camera.zoom;
+    const ty = y + h/2;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 8/camera.zoom, 0, Math.PI*2);
+    ctx.fillStyle = on ? '#00ff88' : '#1a2a1a';
+    ctx.fill();
+    // Knob
+    ctx.beginPath();
+    ctx.arc(tx + (on?3:-3)/camera.zoom, ty, 4/camera.zoom, 0, Math.PI*2);
+    ctx.fillStyle = on ? '#003a1a' : '#5a7a5a';
+    ctx.fill();
+    // Label
+    ctx.font = `bold ${Math.max(8,9/camera.zoom)}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = on ? '#00ff88' : '#5a7a5a';
+    ctx.fillText(comp.customLabel||'SW', tx+14/camera.zoom, ty);
+  }
+  else if(comp.type==='LED') {
+    const val = getInputValues(comp).IN;
+    const cx = x+w/2, cy = y+h/2, cr = Math.min(w,h)/2 - 2/camera.zoom;
+    if(val) {
+      ctx.beginPath(); ctx.arc(cx,cy,cr*2.5,0,Math.PI*2);
+      ctx.fillStyle = 'rgba(0,255,136,0.1)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(cx,cy,cr*1.6,0,Math.PI*2);
+      ctx.fillStyle = 'rgba(0,255,136,0.15)'; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(cx,cy,cr,0,Math.PI*2);
+    ctx.fillStyle = val ? '#00ff88' : '#0a1a0e';
+    ctx.fill();
+    ctx.strokeStyle = val ? '#00ff88' : '#2a4a30';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+  }
+  else if(comp.type==='CLOCK') {
+    const on = comp.state.on;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = on ? 'rgba(255,170,0,0.12)' : '#0a1a0e';
+    ctx.fill();
+    ctx.strokeStyle = on ? '#ffaa00' : '#1a4025';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+    // Wave symbol
+    ctx.beginPath();
+    ctx.moveTo(x+10/camera.zoom, y+h/2);
+    ctx.lineTo(x+18/camera.zoom, y+h/2-8/camera.zoom);
+    ctx.lineTo(x+26/camera.zoom, y+h/2+8/camera.zoom);
+    ctx.lineTo(x+34/camera.zoom, y+h/2);
+    ctx.strokeStyle = on ? '#ffaa00' : '#5a7a5a';
+    ctx.lineWidth = 1.5/camera.zoom;
+    ctx.stroke();
+    ctx.font = `bold ${Math.max(8,9/camera.zoom)}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = on ? '#ffaa00' : '#5a7a5a';
+    ctx.fillText('CLK', x+38/camera.zoom, y+h/2);
+  }
+}
+
+function drawMacroShape(comp) {
+  const {x,y} = comp;
+  const def = GATE_DEFS[comp.type];
+  const w = def.w, h = def.h;
+  const sel = comp.id === selectedId;
+  const r = 6/camera.zoom;
+
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fillStyle = sel ? 'rgba(0,255,136,0.06)' : '#080f08';
+  ctx.fill();
+  ctx.strokeStyle = sel ? '#00ff88' : '#1a4025';
+  ctx.lineWidth = 2/camera.zoom;
+  ctx.stroke();
+
+  // Inner border
+  ctx.beginPath();
+  ctx.roundRect(x+3/camera.zoom, y+3/camera.zoom, w-6/camera.zoom, h-6/camera.zoom, r-1/camera.zoom);
+  ctx.strokeStyle = sel ? 'rgba(0,255,136,0.2)' : '#0f1a0f';
+  ctx.lineWidth = 1/camera.zoom;
+  ctx.stroke();
+}
+
+// ── Canvas Resize ──
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  const rect = container.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+new ResizeObserver(resizeCanvas).observe(container);
+resizeCanvas();
+
+// ── Input Handling ──
+function getCanvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('mousemove', onPointerMove);
+canvas.addEventListener('mouseup', onPointerUp);
+canvas.addEventListener('wheel', onWheel, {passive:false});
+canvas.addEventListener('touchstart', onTouchStart, {passive:false});
+canvas.addEventListener('touchmove', onTouchMove, {passive:false});
+canvas.addEventListener('touchend', onTouchEnd, {passive:false});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('dblclick', onDblClick);
+
+function onPointerDown(e) {
+  const sp = getCanvasPos(e);
+  const wp = screenToWorld(sp.x, sp.y);
+  mouseWorld = wp;
+
+  if(e.button === 1 || (e.button === 0 && e.altKey)) {
+    panning = true; panStart = sp; camStart = {x:camera.x, y:camera.y};
+    canvas.style.cursor = 'grabbing'; return;
+  }
+  if(e.button !== 0) return;
+
+  // Check port hit first
+  const port = hitPort(wp.x, wp.y);
+  if(port) {
+    if(mode === 'wire' || mode === 'select') {
+      if(wiringFrom && wiringFrom.ptype === 'output' && port.ptype === 'input') {
+        addWire(wiringFrom.compId, wiringFrom.pidx, port.compId, port.pidx);
+        wiringFrom = null;
+        return;
+      }
+      if(port.ptype === 'output') {
+        wiringFrom = port;
+        mode = 'wire';
+        updateModeUI();
+        return;
+      }
+    }
+    if(mode === 'delete') {
+      // Remove wire connected to this port
+      const idx = wires.findIndex(w => (w.toId===port.compId && w.toPort===port.pidx) || (w.fromId===port.compId && w.fromPort===port.pidx));
+      if(idx>=0) removeWire(idx);
+      return;
+    }
+  }
+
+  if(mode === 'place' && placeType) {
+    createComponent(placeType, wp.x - GATE_DEFS[placeType].w/2, wp.y - GATE_DEFS[placeType].h/2);
+    return;
+  }
+
+  if(mode === 'delete') {
+    const wi = hitWire(wp.x, wp.y);
+    if(wi >= 0) { removeWire(wi); return; }
+    const comp = hitComponent(wp.x, wp.y);
+    if(comp) { removeComponent(comp.id); return; }
+    return;
+  }
+
+  if(mode === 'wire') {
+    if(wiringFrom) { wiringFrom = null; }
+    else { panning = true; panStart = sp; camStart = {x:camera.x, y:camera.y}; canvas.style.cursor = 'grabbing'; }
+    return;
+  }
+
+  // Select mode
+  const comp = hitComponent(wp.x, wp.y);
+  if(comp) {
+    selectedId = comp.id;
+    dragging = {id: comp.id, offX: wp.x - comp.x, offY: wp.y - comp.y};
+    canvas.style.cursor = 'move';
+  } else {
+    selectedId = null;
+    panning = true; panStart = sp; camStart = {x:camera.x, y:camera.y};
+    canvas.style.cursor = 'grabbing';
+  }
+}
+
+function onPointerMove(e) {
+  const sp = getCanvasPos(e);
+  const wp = screenToWorld(sp.x, sp.y);
+  mouseWorld = wp;
+
+  if(panning) {
+    camera.x = camStart.x - (sp.x - panStart.x)/camera.zoom;
+    camera.y = camStart.y - (sp.y - panStart.y)/camera.zoom;
+    return;
+  }
+  if(dragging) {
+    const comp = components.find(c=>c.id===dragging.id);
+    if(comp) { comp.x = wp.x - dragging.offX; comp.y = wp.y - dragging.offY; }
+    return;
+  }
+  // Cursor hints
+  if(mode==='select') {
+    const port = hitPort(wp.x, wp.y);
+    const comp = hitComponent(wp.x, wp.y);
+    canvas.style.cursor = port ? 'pointer' : (comp ? 'move' : 'grab');
+  }
+}
+
+function onPointerUp(e) {
+  if(dragging) { simulate(); }
+  panning = false; dragging = null;
+  if(mode==='select') canvas.style.cursor = 'grab';
+  else if(mode==='wire') canvas.style.cursor = 'crosshair';
+  else if(mode==='delete') canvas.style.cursor = 'not-allowed';
+  else if(mode==='place') canvas.style.cursor = 'cell';
+}
+
+function onDblClick(e) {
+  const sp = getCanvasPos(e);
+  const wp = screenToWorld(sp.x, sp.y);
+  const comp = hitComponent(wp.x, wp.y);
+  if(comp && (comp.type==='SWITCH' || comp.type==='CLOCK')) {
+    comp.state.on = !comp.state.on;
+    simulate();
+  }
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  const sp = getCanvasPos(e);
+  const wpBefore = screenToWorld(sp.x, sp.y);
+  camera.zoom *= e.deltaY > 0 ? 0.92 : 1.08;
+  camera.zoom = Math.max(0.15, Math.min(5, camera.zoom));
+  const wpAfter = screenToWorld(sp.x, sp.y);
+  camera.x += wpBefore.x - wpAfter.x;
+  camera.y += wpBefore.y - wpAfter.y;
+}
+
+// Touch handling
+function onTouchStart(e) {
+  e.preventDefault();
+  if(e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchDist = Math.hypot(dx,dy);
+    const mx = (e.touches[0].clientX + e.touches[1].clientX)/2;
+    const my = (e.touches[0].clientY + e.touches[1].clientY)/2;
+    panStart = {x:mx, y:my};
+    camStart = {x:camera.x, y:camera.y, zoom:camera.zoom};
+    return;
+  }
+  if(e.touches.length === 1) {
+    onPointerDown({button:0, altKey:false, clientX:e.touches[0].clientX, clientY:e.touches[0].clientY, touches:e.touches, changedTouches:e.changedTouches, preventDefault(){}});
+  }
+}
+function onTouchMove(e) {
+  e.preventDefault();
+  if(e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx,dy);
+    const scale = dist / Math.max(1,touchDist);
+    const r = canvas.getBoundingClientRect();
+    const mx = (e.touches[0].clientX + e.touches[1].clientX)/2 - r.left;
+    const my = (e.touches[0].clientY + e.touches[1].clientY)/2 - r.top;
+    const wpBefore = screenToWorld(mx, my);
+    camera.zoom = Math.max(0.15, Math.min(5, camStart.zoom * scale));
+    const wpAfter = screenToWorld(mx, my);
+    camera.x = camStart.x + wpBefore.x - wpAfter.x;
+    camera.y = camStart.y + wpBefore.y - wpAfter.y;
+    // Pan
+    const cmx = (e.touches[0].clientX + e.touches[1].clientX)/2;
+    const cmy = (e.touches[0].clientY + e.touches[1].clientY)/2;
+    camera.x -= (cmx - panStart.x)/camera.zoom;
+    camera.y -= (cmy - panStart.y)/camera.zoom;
+    return;
+  }
+  if(e.touches.length === 1 && (panning || dragging || wiringFrom)) {
+    onPointerMove({clientX:e.touches[0].clientX, clientY:e.touches[0].clientY, touches:e.touches, changedTouches:e.changedTouches, preventDefault(){}});
+  }
+}
+function onTouchEnd(e) {
+  if(e.touches.length === 0) onPointerUp({touches:e.touches, changedTouches:e.changedTouches, preventDefault(){}});
+}
+
+// ── UI Setup ──
+function updateModeUI() {
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  canvas.className = mode==='wire' ? 'wiring' : mode==='delete' ? 'deleting' : mode==='place' ? 'placing' : '';
+  document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+  if(mode==='place' && placeType) {
+    document.querySelector(`.palette-btn[data-type="${placeType}"]`)?.classList.add('active');
+  }
+}
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = btn.dataset.mode;
+    placeType = null;
+    wiringFrom = null;
+    updateModeUI();
+  });
+});
+
+document.querySelectorAll('.palette-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = 'place';
+    placeType = btn.dataset.type;
+    wiringFrom = null;
+    updateModeUI();
+  });
+});
+
+document.getElementById('btn-zoom-in').addEventListener('click', () => {
+  camera.zoom = Math.min(5, camera.zoom * 1.3);
+});
+document.getElementById('btn-zoom-out').addEventListener('click', () => {
+  camera.zoom = Math.max(0.15, camera.zoom / 1.3);
+});
+document.getElementById('btn-zoom-fit').addEventListener('click', fitView);
+document.getElementById('btn-clear').addEventListener('click', () => {
+  components = []; wires = []; nextId = 1; selectedId = null; wiringFrom = null;
+  currentTutorial = -1;
+  closeTutorialPanel();
+  showToast('Canvas cleared');
+});
+document.getElementById('btn-clock-step').addEventListener('click', () => {
+  components.filter(c=>c.type==='CLOCK').forEach(c => { c.state.on = !c.state.on; });
+  simulate();
+});
+
+// Mobile menu
+document.getElementById('btn-menu').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('open');
+});
+
+// Close sidebar when clicking on canvas (mobile)
+canvas.addEventListener('pointerdown', () => {
+  if(window.innerWidth <= 700) document.getElementById('sidebar').classList.remove('open');
+});
+
+function fitView() {
+  if(components.length === 0) { camera.x=0; camera.y=0; camera.zoom=1; return; }
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  components.forEach(c => {
+    const d = GATE_DEFS[c.type];
+    minX = Math.min(minX, c.x);
+    minY = Math.min(minY, c.y);
+    maxX = Math.max(maxX, c.x + d.w);
+    maxY = Math.max(maxY, c.y + d.h);
+  });
+  camera.x = (minX+maxX)/2;
+  camera.y = (minY+maxY)/2;
+  const w = canvas.width/dpr, h = canvas.height/dpr;
+  const pad = 80;
+  camera.zoom = Math.min(2, Math.max(0.2, Math.min((w-pad*2)/(maxX-minX), (h-pad*2)/(maxY-minY))));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ── Tutorial System ──
+const TUTORIALS = [
+  {
+    title: "Basic Logic Gates",
+    content: `
+      <h3>What are Logic Gates?</h3>
+      <p>Logic gates are the fundamental building blocks of digital circuits. Each gate performs a specific Boolean operation on its inputs to produce an output.</p>
+      <p>This circuit shows three basic gates: <code>AND</code>, <code>OR</code>, and <code>NOT</code>. Each has switches connected to its inputs and an LED showing the output.</p>
+      <h3>How to Interact</h3>
+      <p><span class="highlight">Double-click</span> any switch to toggle it on/off. Watch how the signal (green wires = HIGH, dark = LOW) flows through each gate.</p>
+      <h3>AND Gate Truth Table</h3>
+      <table class="truth-table"><tr><th>A</th><th>B</th><th>Q</th></tr>
+      <tr><td>0</td><td>0</td><td>0</td></tr><tr><td>0</td><td>1</td><td>0</td></tr>
+      <tr><td>1</td><td>0</td><td>0</td></tr><tr><td>1</td><td>1</td><td>1</td></tr></table>
+      <h3>OR Gate Truth Table</h3>
+      <table class="truth-table"><tr><th>A</th><th>B</th><th>Q</th></tr>
+      <tr><td>0</td><td>0</td><td>0</td></tr><tr><td>0</td><td>1</td><td>1</td></tr>
+      <tr><td>1</td><td>0</td><td>1</td></tr><tr><td>1</td><td>1</td><td>1</td></tr></table>
+      <h3>NOT Gate Truth Table</h3>
+      <table class="truth-table"><tr><th>A</th><th>Q</th></tr>
+      <tr><td>0</td><td>1</td></tr><tr><td>1</td><td>0</td></tr></table>
+    `,
+    build() {
+      const sw1 = createComponent('SWITCH', -180, -80); sw1.customLabel = 'A1';
+      const sw2 = createComponent('SWITCH', -180, -40); sw2.customLabel = 'B1';
+      const and = createComponent('AND', -100, -90);
+      const led1 = createComponent('LED', -20, -80);
+      addWire(sw1.id, 0, and.id, 0);
+      addWire(sw2.id, 0, and.id, 1);
+      addWire(and.id, 0, led1.id, 0);
+
+      const sw3 = createComponent('SWITCH', -180, 20); sw3.customLabel = 'A2';
+      const sw4 = createComponent('SWITCH', -180, 60); sw4.customLabel = 'B2';
+      const or = createComponent('OR', -100, 10);
+      const led2 = createComponent('LED', -20, 20);
+      addWire(sw3.id, 0, or.id, 0);
+      addWire(sw4.id, 0, or.id, 1);
+      addWire(or.id, 0, led2.id, 0);
+
+      const sw5 = createComponent('SWITCH', -180, 120); sw5.customLabel = 'A3';
+      const not = createComponent('NOT', -100, 110);
+      const led3 = createComponent('LED', -20, 120);
+      addWire(sw5.id, 0, not.id, 0);
+      addWire(not.id, 0, led3.id, 0);
+    }
+  },
+  {
+    title: "NAND, NOR & XOR Gates",
+    content: `
+      <h3>Inverted & Exclusive Gates</h3>
+      <p>These gates are built by combining basic operations:</p>
+      <p><code>NAND</code> = NOT-AND — output is LOW only when ALL inputs are HIGH. NAND is special because <span class="highlight">any logic circuit can be built using only NAND gates</span>.</p>
+      <p><code>NOR</code> = NOT-OR — output is HIGH only when ALL inputs are LOW. Like NAND, NOR is "functionally complete."</p>
+      <p><code>XOR</code> = Exclusive-OR — output is HIGH when inputs are <em>different</em>. Essential for arithmetic circuits and parity checking.</p>
+      <h3>NAND Truth Table</h3>
+      <table class="truth-table"><tr><th>A</th><th>B</th><th>Q</th></tr>
+      <tr><td>0</td><td>0</td><td>1</td></tr><tr><td>0</td><td>1</td><td>1</td></tr>
+      <tr><td>1</td><td>0</td><td>1</td></tr><tr><td>1</td><td>1</td><td>0</td></tr></table>
+      <h3>XOR Truth Table</h3>
+      <table class="truth-table"><tr><th>A</th><th>B</th><th>Q</th></tr>
+      <tr><td>0</td><td>0</td><td>0</td></tr><tr><td>0</td><td>1</td><td>1</td></tr>
+      <tr><td>1</td><td>0</td><td>1</td></tr><tr><td>1</td><td>1</td><td>0</td></tr></table>
+      <p>Double-click switches to test each gate!</p>
+    `,
+    build() {
+      const types = ['NAND','NOR','XOR'];
+      const labels = [['A','B'],['C','D'],['E','F']];
+      types.forEach((type, row) => {
+        const y = -60 + row * 70;
+        const sw1 = createComponent('SWITCH', -180, y); sw1.customLabel = labels[row][0];
+        const sw2 = createComponent('SWITCH', -180, y+35); sw2.customLabel = labels[row][1];
+        const gate = createComponent(type, -100, y-5);
+        const led = createComponent('LED', -20, y+10);
+        addWire(sw1.id, 0, gate.id, 0);
+        addWire(sw2.id, 0, gate.id, 1);
+        addWire(gate.id, 0, led.id, 0);
+      });
+    }
+  },
+  {
+    title: "SR Latch — The Memory Element",
+    content: `
+      <h3>From Gates to Memory</h3>
+      <p>An <span class="highlight">SR Latch</span> is the simplest memory circuit. It "remembers" a single bit of information using <strong>feedback</strong> — the output of each gate feeds back into the other.</p>
+      <h3>Circuit Structure</h3>
+      <pre>NOR1: Q\u0305 = NOR(S, Q)
+NOR2: Q  = NOR(R, Q\u0305)</pre>
+      <p>The cross-coupled feedback creates a <span class="highlight">bistable</span> circuit — it has two stable states and stays in whichever state it was last set to, even after inputs are removed.</p>
+      <h3>How to Use</h3>
+      <p>Double-click <code>S</code> (Set) to make Q=1. Double-click <code>R</code> (Reset) to make Q=0. Remove both inputs — <span class="highlight">Q keeps its value!</span> That's memory.</p>
+      <h3>SR Latch Truth Table</h3>
+      <table class="truth-table"><tr><th>S</th><th>R</th><th>Q</th><th>Q\u0305</th><th>Note</th></tr>
+      <tr><td>0</td><td>0</td><td>Q</td><td>Q\u0305</td><td>Hold</td></tr>
+      <tr><td>1</td><td>0</td><td>1</td><td>0</td><td>Set</td></tr>
+      <tr><td>0</td><td>1</td><td>0</td><td>1</td><td>Reset</td></tr>
+      <tr><td>1</td><td>1</td><td>0</td><td>0</td><td class="warning">Invalid</td></tr></table>
+      <p><span class="warning">Warning:</span> S=R=1 is forbidden because it forces both outputs to 0, violating the Q/Q\u0305 complement rule.</p>
+    `,
+    build() {
+      const sSw = createComponent('SWITCH', -200, -70); sSw.customLabel = 'S';
+      const rSw = createComponent('SWITCH', -200, 50); rSw.customLabel = 'R';
+      const nor1 = createComponent('NOR', -80, -90); // Top: Q̄ output
+      const nor2 = createComponent('NOR', -80, 30);  // Bottom: Q output
+      const ledQ = createComponent('LED', 40, 40);
+      const ledQbar = createComponent('LED', 40, -80);
+
+      // S → NOR1 input A (top)
+      addWire(sSw.id, 0, nor1.id, 0);
+      // R → NOR2 input A (top)
+      addWire(rSw.id, 0, nor2.id, 0);
+      // NOR2 output (Q) → NOR1 input B (bottom) — cross feedback
+      addWire(nor2.id, 0, nor1.id, 1);
+      // NOR1 output (Q̄) → NOR2 input B (bottom) — cross feedback
+      addWire(nor1.id, 0, nor2.id, 1);
+      // NOR2 → LED Q
+      addWire(nor2.id, 0, ledQ.id, 0);
+      // NOR1 → LED Q̄
+      addWire(nor1.id, 0, ledQbar.id, 0);
+
+      // Label with text annotations via custom labels
+      nor1.customLabel = 'NOR1';
+      nor2.customLabel = 'NOR2';
+    }
+  },
+  {
+    title: "D Latch — Level-Sensitive Storage",
+    content: `
+      <h3>Controlling When Data is Stored</h3>
+      <p>The SR latch has a problem: the S and R inputs directly affect the stored value. A <span class="highlight">D Latch</span> solves this by adding an <strong>Enable</strong> signal.</p>
+      <h3>Circuit Structure</h3>
+      <pre>S = D AND Enable
+R = NOT(D) AND Enable
+SR Latch(S, R) → Q</pre>
+      <p>When Enable is LOW, both S and R are 0, so the latch holds its value. When Enable is HIGH, the latch transparently passes D to Q.</p>
+      <h3>How to Use</h3>
+      <p>1. Set <code>D</code> to the value you want to store (0 or 1)<br>
+      2. Double-click <code>EN</code> to enable — Q follows D<br>
+      3. Double-click <code>EN</code> again to disable — Q <span class="highlight">holds the last value of D</span><br>
+      4. Change D — Q does NOT change while disabled!</p>
+      <h3>D Latch Truth Table</h3>
+      <table class="truth-table"><tr><th>EN</th><th>D</th><th>Q</th><th>Note</th></tr>
+      <tr><td>0</td><td>X</td><td>Q</td><td>Hold</td></tr>
+      <tr><td>1</td><td>0</td><td>0</td><td>Transparent</td></tr>
+      <tr><td>1</td><td>1</td><td>1</td><td>Transparent</td></tr></table>
+    `,
+    build() {
+      const dSw = createComponent('SWITCH', -280, -40); dSw.customLabel = 'D';
+      const enSw = createComponent('SWITCH', -280, 40); enSw.customLabel = 'EN';
+      const notD = createComponent('NOT', -200, -45);
+      const andS = createComponent('AND', -120, -60);
+      const andR = createComponent('AND', -120, 20);
+      const nor1 = createComponent('NOR', 0, -60);
+      const nor2 = createComponent('NOR', 0, 20);
+      const ledQ = createComponent('LED', 120, 30);
+
+      // D → NOT
+      addWire(dSw.id, 0, notD.id, 0);
+      // D → AND_S input A
+      addWire(dSw.id, 0, andS.id, 0);
+      // NOT(D) → AND_R input A
+      addWire(notD.id, 0, andR.id, 0);
+      // EN → AND_S input B
+      addWire(enSw.id, 0, andS.id, 1);
+      // EN → AND_R input B
+      addWire(enSw.id, 0, andR.id, 1);
+      // AND_S → NOR1 input A
+      addWire(andS.id, 0, nor1.id, 0);
+      // AND_R → NOR2 input A
+      addWire(andR.id, 0, nor2.id, 0);
+      // Cross feedback
+      addWire(nor2.id, 0, nor1.id, 1);
+      addWire(nor1.id, 0, nor2.id, 1);
+      // NOR2 → LED
+      addWire(nor2.id, 0, ledQ.id, 0);
+    }
+  },
+  {
+    title: "D Flip-Flop — Edge-Triggered Storage",
+    content: `
+      <h3>The Real Building Block of RAM</h3>
+      <p>A <span class="highlight">D Flip-Flop</span> captures data on the <strong>rising edge</strong> of a clock signal, not while the clock is high. This is crucial for synchronous digital systems.</p>
+      <h3>Internal Structure (Master-Slave)</h3>
+      <pre>Master D-Latch: enabled when CLK = 0
+Slave D-Latch:  enabled when CLK = 1
+NOT gate inverts CLK for master</pre>
+      <p>When CLK rises: master is already holding data (was transparent while CLK was low), slave becomes transparent and passes master's output to Q.</p>
+      <h3>How to Use</h3>
+      <p>1. Set <code>D</code> to desired value<br>
+      2. Use the <span class="highlight">Clock Step</span> button (toolbar) to toggle the clock<br>
+      3. Q updates <strong>only on the rising edge</strong> (when CLK goes 0→1)<br>
+      4. Changing D between clock edges has <strong>no effect</strong> on Q</p>
+      <h3>D Flip-Flop Truth Table</h3>
+      <table class="truth-table"><tr><th>CLK</th><th>D</th><th>Q</th><th>Note</th></tr>
+      <tr><td>↑</td><td>0</td><td>0</td><td>Capture on rising edge</td></tr>
+      <tr><td>↑</td><td>1</td><td>1</td><td>Capture on rising edge</td></tr>
+      <tr><td>0/1</td><td>X</td><td>Q</td><td>Hold between edges</td></tr></table>
+    `,
+    build() {
+      const dSw = createComponent('SWITCH', -180, -20); dSw.customLabel = 'D';
+      const clk = createComponent('CLOCK', -180, 30);
+      const ff = createComponent('D_FLIPFLOP', -60, -32);
+      const ledQ = createComponent('LED', 80, -20);
+      const ledQbar = createComponent('LED', 80, 20);
+
+      addWire(dSw.id, 0, ff.id, 0); // D
+      addWire(clk.id, 0, ff.id, 1); // CLK
+      addWire(ff.id, 0, ledQ.id, 0); // Q
+      addWire(ff.id, 1, ledQbar.id, 0); // Q̄
+    }
+  },
+  {
+    title: "1-Bit RAM Cell",
+    content: `
+      <h3>From Flip-Flop to Memory Cell</h3>
+      <p>A real RAM cell needs three things the basic flip-flop doesn't have:</p>
+      <p><span class="highlight">Data In (D)</span> — the bit to store<br>
+      <span class="highlight">Write Enable (WE)</span> — only write when this is HIGH<br>
+      <span class="highlight">Clock (CLK)</span> — synchronizes the write operation</p>
+      <h3>Internal Logic</h3>
+      <pre>Internal D-FF captures D only when:
+  WE = 1 AND CLK rises
+
+Otherwise Q holds its value (read mode)</pre>
+      <h3>How to Use</h3>
+      <p><strong>Write:</strong> Set D to desired bit, set WE high, click Clock Step (rising edge captures D)<br>
+      <strong>Read:</strong> Set WE low, Q always outputs the stored value<br>
+      <strong>Hold:</strong> With WE low, clock edges don't affect the stored data</p>
+      <p>This single cell stores <span class="highlight">exactly 1 bit</span> of information. Real RAM chips contain billions of these!</p>
+    `,
+    build() {
+      const dSw = createComponent('SWITCH', -200, -30); dSw.customLabel = 'D';
+      const weSw = createComponent('SWITCH', -200, 15); weSw.customLabel = 'WE';
+      const clk = createComponent('CLOCK', -200, 60);
+      const cell = createComponent('RAM_CELL', -60, -35);
+      const ledQ = createComponent('LED', 80, 0);
+
+      addWire(dSw.id, 0, cell.id, 0);  // D
+      addWire(weSw.id, 0, cell.id, 1); // WE
+      addWire(clk.id, 0, cell.id, 2);  // CLK
+      addWire(cell.id, 0, ledQ.id, 0); // Q out
+    }
+  },
+  {
+    title: "4-Bit RAM — Putting It All Together",
+    content: `
+      <h3>Building a Real RAM Array</h3>
+      <p>A 4-bit RAM stores 4 separate bits, each at a unique <span class="highlight">address</span> (0-3). To select which cell to read/write, we need an <strong>address decoder</strong>.</p>
+      <h3>Address Decoder</h3>
+      <p>A 2-to-4 decoder takes 2 address bits (A0, A1) and activates exactly one of 4 output lines:</p>
+      <table class="truth-table"><tr><th>A1</th><th>A0</th><th>SEL0</th><th>SEL1</th><th>SEL2</th><th>SEL3</th></tr>
+      <tr><td>0</td><td>0</td><td class="highlight">1</td><td>0</td><td>0</td><td>0</td></tr>
+      <tr><td>0</td><td>1</td><td>0</td><td class="highlight">1</td><td>0</td><td>0</td></tr>
+      <tr><td>1</td><td>0</td><td>0</td><td>0</td><td class="highlight">1</td><td>0</td></tr>
+      <tr><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td class="highlight">1</td></tr></table>
+      <h3>How It Works</h3>
+      <p>Each RAM cell's Write Enable is gated with its address select line. Only the <span class="highlight">selected</span> cell responds to write commands.</p>
+      <h3>How to Use This Circuit</h3>
+      <p>1. Set <code>A0</code> and <code>A1</code> to choose an address (00-11)<br>
+      2. Set <code>D</code> to the data bit you want to store<br>
+      3. Set <code>WE</code> high, then click <span class="highlight">Clock Step</span> to write<br>
+      4. Set <code>WE</code> low, change address — each LED shows its stored bit<br>
+      5. Try writing different values to each address!</p>
+      <p><span class="highlight">Congratulations!</span> You've built a working RAM module from logic gates. Real DRAM uses the same principle but with capacitor-based cells instead of flip-flops, and adds multiplexers to share data lines.</p>
+    `,
+    build() {
+      // Address inputs
+      const a0 = createComponent('SWITCH', -360, -60); a0.customLabel = 'A0';
+      const a1 = createComponent('SWITCH', -360, -20); a1.customLabel = 'A1';
+      // Data & control
+      const dSw = createComponent('SWITCH', -360, 40); dSw.customLabel = 'D';
+      const weSw = createComponent('SWITCH', -360, 80); weSw.customLabel = 'WE';
+      const clk = createComponent('CLOCK', -360, 120);
+
+      // Address decoder (built from NOT + AND gates)
+      const notA0 = createComponent('NOT', -280, -55);
+      const notA1 = createComponent('NOT', -280, -15);
+      // SEL0 = NOT(A1) AND NOT(A0)
+      const decAnd0 = createComponent('AND', -200, -80);
+      // SEL1 = NOT(A1) AND A0
+      const decAnd1 = createComponent('AND', -200, -30);
+      // SEL2 = A1 AND NOT(A0)
+      const decAnd2 = createComponent('AND', -200, 20);
+      // SEL3 = A1 AND A0
+      const decAnd3 = createComponent('AND', -200, 70);
+
+      // Wire decoder
+      addWire(a0.id, 0, notA0.id, 0);
+      addWire(a1.id, 0, notA1.id, 0);
+      // SEL0
+      addWire(notA1.id, 0, decAnd0.id, 0);
+      addWire(notA0.id, 0, decAnd0.id, 1);
+      // SEL1
+      addWire(notA1.id, 0, decAnd1.id, 0);
+      addWire(a0.id, 0, decAnd1.id, 1);
+      // SEL2
+      addWire(a1.id, 0, decAnd2.id, 0);
+      addWire(notA0.id, 0, decAnd2.id, 1);
+      // SEL3
+      addWire(a1.id, 0, decAnd3.id, 0);
+      addWire(a0.id, 0, decAnd3.id, 1);
+
+      // WE gates (AND with each select line)
+      const weAnd0 = createComponent('AND', -110, -80);
+      const weAnd1 = createComponent('AND', -110, -30);
+      const weAnd2 = createComponent('AND', -110, 20);
+      const weAnd3 = createComponent('AND', -110, 70);
+      addWire(weSw.id, 0, weAnd0.id, 0);
+      addWire(weSw.id, 0, weAnd1.id, 0);
+      addWire(weSw.id, 0, weAnd2.id, 0);
+      addWire(weSw.id, 0, weAnd3.id, 0);
+      addWire(decAnd0.id, 0, weAnd0.id, 1);
+      addWire(decAnd1.id, 0, weAnd1.id, 1);
+      addWire(decAnd2.id, 0, weAnd2.id, 1);
+      addWire(decAnd3.id, 0, weAnd3.id, 1);
+
+      // 4 RAM cells
+      const cells = [];
+      const leds = [];
+      const yPositions = [-80, -30, 20, 70];
+      yPositions.forEach((yp, i) => {
+        const cell = createComponent('RAM_CELL', -10, yp - 30);
+        const led = createComponent('LED', 140, yp - 5);
+        cells.push(cell);
+        leds.push(led);
+
+        // D to all cells
+        addWire(dSw.id, 0, cell.id, 0);
+        // Gated WE to cell
+        addWire(weAnd0.id === undefined ? weAnd0.id : [weAnd0,weAnd1,weAnd2,weAnd3][i].id, 0, cell.id, 1);
+        // CLK to all cells
+        addWire(clk.id, 0, cell.id, 2);
+        // Cell output to LED
+        addWire(cell.id, 0, led.id, 0);
+      });
+      // Fix WE wiring (need to reference correctly)
+      // Remove the wrong wires and re-add
+      wires = wires.filter(w => {
+        if([weAnd0.id,weAnd1.id,weAnd2.id,weAnd3.id].includes(w.fromId) && cells.some(c => c.id === w.toId) && w.toPort === 1) return false;
+        return true;
+      });
+      cells.forEach((cell, i) => {
+        addWire([weAnd0,weAnd1,weAnd2,weAnd3][i].id, 0, cell.id, 1);
+      });
+    }
+  }
+];
+
+function loadTutorial(idx) {
+  if(idx < 0 || idx >= TUTORIALS.length) return;
+  currentTutorial = idx;
+  components = []; wires = []; nextId = 1; selectedId = null; wiringFrom = null;
+  TUTORIALS[idx].build();
+  setTimeout(fitView, 50);
+  showTutorialPanel(idx);
+}
+
+function showTutorialPanel(idx) {
+  const tut = TUTORIALS[idx];
+  document.getElementById('tutorial-title').textContent = tut.title;
+  document.getElementById('tutorial-content').innerHTML = tut.content;
+  document.getElementById('tutorial-step-indicator').textContent = `${idx+1} / ${TUTORIALS.length}`;
+  document.getElementById('btn-tut-prev').disabled = idx === 0;
+  document.getElementById('btn-tut-next').disabled = idx === TUTORIALS.length - 1;
+  document.getElementById('tutorial-overlay').classList.add('open');
+}
+
+function closeTutorialPanel() {
+  document.getElementById('tutorial-overlay').classList.remove('open');
+}
+
+document.getElementById('btn-tutorial').addEventListener('click', () => {
+  if(currentTutorial >= 0) showTutorialPanel(currentTutorial);
+  else loadTutorial(0);
+});
+document.getElementById('btn-tutorial-close').addEventListener('click', closeTutorialPanel);
+document.getElementById('btn-tut-prev').addEventListener('click', () => {
+  if(currentTutorial > 0) loadTutorial(currentTutorial - 1);
+});
+document.getElementById('btn-tut-next').addEventListener('click', () => {
+  if(currentTutorial < TUTORIALS.length - 1) loadTutorial(currentTutorial + 1);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  switch(e.key) {
+    case 'v': case 'V': mode='select'; placeType=null; wiringFrom=null; updateModeUI(); break;
+    case 'w': case 'W': mode='wire'; placeType=null; updateModeUI(); break;
+    case 'x': case 'X': mode='delete'; placeType=null; wiringFrom=null; updateModeUI(); break;
+    case 'Delete': case 'Backspace':
+      if(selectedId) { removeComponent(selectedId); }
+      break;
+    case 'Escape':
+      wiringFrom = null; mode='select'; placeType=null; updateModeUI();
+      closeTutorialPanel();
+      break;
+    case ' ':
+      e.preventDefault();
+      components.filter(c=>c.type==='CLOCK').forEach(c => { c.state.on = !c.state.on; });
+      simulate();
+      break;
+  }
+});
+
+// ── Initialize ──
+function init() {
+  // Load first tutorial automatically
+  loadTutorial(0);
+  requestAnimationFrame(render);
+  // Fade out hint
+  setTimeout(() => {
+    const hint = document.getElementById('canvas-hint');
+    if(hint) hint.style.opacity = '0';
+    setTimeout(() => { if(hint) hint.style.display = 'none'; }, 300);
+  }, 5000);
+}
+init();
+</script>
+</body>
+</html>
