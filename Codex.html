@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Multi-Language Code Extractor</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-hover: #1f242c;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-hover: #79c0ff;
+    --success: #3fb950;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    background-color: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  button:hover {
+    background-color: var(--surface-hover);
+    border-color: var(--text-muted);
+  }
+
+  button.primary {
+    background-color: #238636;
+    border-color: rgba(240, 246, 252, 0.1);
+    color: #fff;
+  }
+
+  button.primary:hover {
+    background-color: #2ea043;
+  }
+
+  .input-section {
+    margin-bottom: 24px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 220px;
+    background-color: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .stats-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .blocks-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .code-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background-color: #1c2128;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .code-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lang-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background-color: var(--border);
+    color: #fff;
+    letter-spacing: 0.5px;
+  }
+
+  .lang-javascript { background-color: rgba(241, 224, 90, 0.2); color: #f1e05a; border: 1px solid rgba(241, 224, 90, 0.4); }
+  .lang-python { background-color: rgba(53, 114, 165, 0.25); color: #79c0ff; border: 1px solid rgba(53, 114, 165, 0.5); }
+  .lang-bash { background-color: rgba(137, 224, 81, 0.2); color: #89e051; border: 1px solid rgba(137, 224, 81, 0.4); }
+  .lang-html { background-color: rgba(227, 76, 38, 0.2); color: #ffa657; border: 1px solid rgba(227, 76, 38, 0.4); }
+  .lang-css { background-color: rgba(86, 61, 124, 0.3); color: #d2a8ff; border: 1px solid rgba(86, 61, 124, 0.5); }
+  .lang-json { background-color: rgba(139, 148, 158, 0.2); color: #c9d1d9; border: 1px solid rgba(139, 148, 158, 0.4); }
+  .lang-sql { background-color: rgba(227, 140, 0, 0.2); color: #e3b341; border: 1px solid rgba(227, 140, 0, 0.4); }
+
+  .file-title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .line-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .code-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .code-actions button {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+  }
+
+  pre {
+    margin: 0;
+    padding: 16px;
+    overflow-x: auto;
+    max-height: 550px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    tab-size: 2;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+  }
+
+  /* Syntax Highlighting */
+  .tok-kw { color: #ff7b72; }
+  .tok-str { color: #a5d6ff; }
+  .tok-com { color: #8b949e; font-style: italic; }
+  .tok-num { color: #79c0ff; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Smart Multi-Language Code Extractor</h1>
+  <div class="controls">
+    <button id="loadExampleBtn">Load Example Text</button>
+    <button id="clearBtn">Clear</button>
+    <button id="extractBtn" class="primary">Extract Code Blocks</button>
+  </div>
+</header>
+
+<section class="input-section">
+  <textarea id="inputText" placeholder="Paste raw text, LLM responses, tutorials, or mixed un-fenced code snippets here..."></textarea>
+</section>
+
+<div class="stats-bar" id="statsBar">
+  <span id="summaryText">Ready to extract code.</span>
+</div>
+
+<main class="blocks-container" id="blocksContainer">
+  <div class="empty-state">Paste text above and click <strong>Extract Code Blocks</strong> (or click <strong>Load Example Text</strong> to test immediately).</div>
+</main>
+
+<script>
+const EXAMPLE_TEXT = `Below are the updated, complete, runnable JavaScript (train.js) and Python
+(train.py) implementations with full feature parity, including:
+
+1.  --batchLog toggle (also accepts --batch-log): Logs batch-level rewards, edit
+    similarity, persona accuracy, steps, chars/step, current exponential step
+    penalty, PPO/value/BC losses, entropy, and gradient norm after every PPO
+    batch update.
+2.  Slowly increasing exponential per-step penalty:
+    \\text{stepPenalty}(t) = -\\min\\left(2.5,\\; 0.05 \\cdot 1.018^{\\,t - 1}\\right)
+
+1. Complete Updated JavaScript Version (train.js)
+
+Save as train.js (requires only Node.js):
+
+#!/usr/bin/env node
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+// ============================================================================
+// 1. CLI & Deterministic PRNG Utilities
+// ============================================================================
+
+const EYE_DELTAS = [-16, -8, -4, -1, 0, 1, 4, 8, 16];
+const STAY_EYE_ACTION = 4; // index of delta === 0
+const NUM_SLOTS = 10;
+
+// ============================================================================
+// 2. Full Input Text Parser & On-the-Fly Turn-Cleaning / Persona Rules
+// ============================================================================
+
+function computeStepPenalty(stepCount) {
+  return -Math.min(
+    2.5,
+    0.05 * Math.pow(1.018, Math.max(0, stepCount - 1))
+  );
+}
+
+/* Multi-line banner comment
+   2. Subsection inside comment block
+   Notice how numbered lists inside comments won't split the file! */
+function createRNG(seed = 42) {
+  let a = seed >>> 0;
+  return function rng() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+if (require.main === module) {
+  console.log("JS Trainer Ready", computeStepPenalty(10));
+}
+
+2. Complete Python Version (train.py)
+
+Save as train.py (requires Python 3.8+ and PyTorch: pip install torch):
+
+#!/usr/bin/env python3
+"""
+Multi-Eye GRU Actor-Critic RL Trainer (10-Slot Character Keyboard) - Python/PyTorch Version
+1. Section inside docstring
+2. Another note inside docstring
+"""
+
+import argparse
+import math
+import os
+import random
+import re
+from typing import Dict, List, Optional
+
+# ============================================================================
+# 1. Constants & Reward Shaping Parameters
+# ============================================================================
+
+EYE_DELTAS = [-16, -8, -4, -1, 0, 1, 4, 8, 16]
+STAY_EYE_ACTION = 4
+NUM_SLOTS = 10
+
+# ============================================================================
+# 2. Full Input Text Parser & On-the-Fly Turn-Cleaning / Persona Rules
+# ============================================================================
+
+def compute_step_penalty(step_count: int) -> float:
+    return -min(
+        2.5,
+        0.05 * (1.018 ** max(0, step_count - 1)),
+    )
+
+class TextEyeEnv:
+    def __init__(self, num_eyes: int = 3):
+        self.num_eyes = num_eyes
+        self.step_count = 0
+
+    def reset(self):
+        self.step_count = 0
+        return {"eyes": self.num_eyes}
+
+if __name__ == "__main__":
+    print("Python Trainer Ready", compute_step_penalty(10))
+
+3. Example Terminal Commands
+
+# Self-test both versions (checks parser, penalties, reward balance, and gradients)
+node train.js --self-test
+python3 train.py --self-test
+
+# Train with batch logging enabled and live output attempts every 5 epochs
+node train.js --data ./corpus.txt --epochs 40 --eyes 4 --lr 0.0015 --batchLog --live-log-every 5 --save ./ckpt.json
+python3 train.py --data ./corpus.txt --epochs 40 --eyes 4 --lr 0.0015 --batchLog --live-log-every 5 --save ./ckpt.pt`;
+
+const EXT_MAP = {
+  javascript: 'js',
+  python: 'py',
+  bash: 'sh',
+  html: 'html',
+  css: 'css',
+  json: 'json',
+  sql: 'sql',
+  cpp: 'cpp',
+  rust: 'rs',
+  go: 'go',
+  code: 'txt'
+};
+
+function normalizeLangName(raw) {
+  const map = {
+    js: 'javascript',
+    node: 'javascript',
+    ts: 'javascript',
+    typescript: 'javascript',
+    py: 'python',
+    python3: 'python',
+    sh: 'bash',
+    shell: 'bash',
+    zsh: 'bash',
+    htm: 'html'
+  };
+  return map[raw] || raw || 'code';
+}
+
+/**
+ * Classifies a single line with structural awareness:
+ * - Recognizes comment lines (//, #, /*, *, <!--) vs real prose
+ * - Detects structural depth changes ({ }, ( ), [ ])
+ * - Detects language-specific constructs & file boundaries
+ */
+function analyzeLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return {
+      isEmpty: true,
+      isComment: false,
+      isProseHeader: false,
+      codeScore: 0,
+      langs: {},
+      boundaryStart: null,
+      braceDelta: 0,
+      parenDelta: 0,
+      bracketDelta: 0
+    };
+  }
+
+  const langs = {
+    javascript: 0,
+    python: 0,
+    bash: 0,
+    html: 0,
+    css: 0,
+    json: 0,
+    sql: 0
+  };
+  let codeScore = 0;
+  let boundaryStart = null;
+
+  // 1. Shebangs / Explicit File Entrypoints (Hard file boundary)
+  if (/^#!\/.*(node|bun|deno)/.test(trimmed)) {
+    langs.javascript += 20;
+    codeScore += 12;
+    boundaryStart = 'javascript';
+  } else if (/^#!\/.*python/.test(trimmed)) {
+    langs.python += 20;
+    codeScore += 12;
+    boundaryStart = 'python';
+  } else if (/^#!\/.*(bash|sh|zsh)/.test(trimmed)) {
+    langs.bash += 20;
+    codeScore += 12;
+    boundaryStart = 'bash';
+  } else if (/^<!DOCTYPE html>/i.test(trimmed) || /^<html[\s>]/i.test(trimmed)) {
+    langs.html += 20;
+    codeScore += 12;
+    boundaryStart = 'html';
+  }
+
+  // 2. Comment Line Detection (crucial: comments inside code NEVER split a file!)
+  const isSingleLineComment =
+    /^\/\/.*/.test(trimmed) ||
+    (/^#(?!include|define|pragma|ifdef|ifndef|endif|if|else|elif|!).*/.test(trimmed)) ||
+    /^<!--.*-->$/.test(trimmed);
+
+  const isBannerDivider = /^(\/\/|#|\*)\s*[=\-*#_]{4,}/.test(trimmed);
+
+  if (isSingleLineComment || isBannerDivider) {
+    if (trimmed.startsWith('//')) langs.javascript += 2;
+    if (trimmed.startsWith('#') && !trimmed.startsWith('#!')) {
+      langs.python += 1;
+      langs.bash += 1;
+    }
+    return {
+      isEmpty: false,
+      isComment: true,
+      isProseHeader: false,
+      codeScore: 3,
+      langs,
+      boundaryStart: null,
+      braceDelta: 0,
+      parenDelta: 0,
+      bracketDelta: 0
+    };
+  }
+
+  // 3. Prose / Section Heading Exclusion Signals (outside comments)
+  const isSectionHeader =
+    /^\d+\.\s+[A-Z][A-Za-z0-9\s()._-]+$/.test(trimmed) &&
+    !trimmed.endsWith(';') &&
+    !trimmed.endsWith('{') &&
+    !trimmed.endsWith(':');
+
+  const isInstructionProse =
+    /^(Save as|Below are|Note:|Example:|Usage:|Required|Optional|Training|Logging|Cleaning|Checkpoint|Here is|Here's)/i.test(trimmed) &&
+    !trimmed.includes('=') &&
+    !trimmed.endsWith('{') &&
+    !trimmed.endsWith(';');
+
+  const isBulletProse =
+    /^(\d+\.|[-*])\s+--?[a-zA-Z0-9-]+/.test(trimmed) ||
+    (/^[-*]\s+[A-Z]/.test(trimmed) && !trimmed.includes(';') && !trimmed.includes('='));
+
+  const isLatexLine = /^\\text\{/.test(trimmed) || /\\left\(\vert{}\\right\)/.test(trimmed);
+
+  if (isSectionHeader || isInstructionProse || isBulletProse || isLatexLine) {
+    return {
+      isEmpty: false,
+      isComment: false,
+      isProseHeader: true,
+      codeScore: -10,
+      langs,
+      boundaryStart: null,
+      braceDelta: 0,
+      parenDelta: 0,
+      bracketDelta: 0
+    };
+  }
+
+  // Compute net delimiter deltas (ignoring strings roughly)
+  const strippedStrings = trimmed
+    .replace(/`(?:\\.|[^`\\])*`/g, '""')
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/\/\/.*$/, '');
+
+  const countChar = (str, ch) => {
+    let c = 0;
+    for (let i = 0; i < str.length; i++) if (str[i] === ch) c++;
+    return c;
+  };
+
+  const braceDelta = countChar(strippedStrings, '{') - countChar(strippedStrings, '}');
+  const parenDelta = countChar(strippedStrings, '(') - countChar(strippedStrings, ')');
+  const bracketDelta = countChar(strippedStrings, '[') - countChar(strippedStrings, ']');
+
+  // 4. Language-Specific Syntax Patterns
+  // JavaScript
+  if (/^'use strict';|^"use strict";/.test(trimmed)) { langs.javascript += 9; codeScore += 6; }
+  if (/\b(const|let|var)\s+[a-zA-Z_$][\w$]*\s*=/.test(trimmed)) { langs.javascript += 6; codeScore += 5; }
+  if (/\brequire\s*\(['"]/.test(trimmed) || /^import\s+.*\s+from\s+['"]/.test(trimmed) || /^export\s+(default\s+)?(function|class|const|let)/.test(trimmed)) {
+    langs.javascript += 7; codeScore += 5;
+  }
+  if (/^(async\s+)?function\s+[a-zA-Z_$][\w$]*\s*\(/.test(trimmed) || /=>\s*\{?$/.test(trimmed)) {
+    langs.javascript += 5; codeScore += 4;
+  }
+  if (/console\.(log|error|warn)\(|module\.exports|require\.main\s*===\s*module|new\s+(Int32Array|Float64Array|Map|Set|Uint8Array)\(/.test(trimmed)) {
+    langs.javascript += 7; codeScore += 5;
+  }
+  if (/;\s*(\/\/.*)?$/.test(trimmed)) {
+    langs.javascript += 2; codeScore += 2;
+  }
+
+  // Python
+  if (/^(from\s+[\w.]+\s+import\s+|import\s+[\w.,\s]+)$/.test(trimmed) && !trimmed.endsWith(';')) {
+    langs.python += 8; codeScore += 6;
+  }
+  if (/^(async\s+)?def\s+[a-zA-Z_]\w*\s*\(.*\)\s*(->\s*[^:]+)?\s*:/.test(trimmed)) {
+    langs.python += 9; codeScore += 7;
+  }
+  if (/^class\s+[a-zA-Z_]\w*(\([^)]*\))?\s*:/.test(trimmed)) {
+    langs.python += 8; codeScore += 6;
+  }
+  if (/^if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(trimmed)) {
+    langs.python += 12; codeScore += 8;
+  }
+  if (/\bself\.[a-zA-Z_]\w*/.test(trimmed) || /^@\w+/.test(trimmed)) {
+    langs.python += 6; codeScore += 4;
+  }
+  if (/^(elif\s+.*:|except\s*.*:|finally:|with\s+.*:|for\s+\w+\s+in\s+.*:|while\s+.*:|else\s*:)$/.test(trimmed)) {
+    langs.python += 5; codeScore += 4;
+  }
+
+  // Bash / CLI Commands
+  if (/^(node|python|python3|npm|npx|pip|pip3|git|docker|curl|wget|cd|ls|mkdir|rm|cp|mv|export|chmod|sudo)\s+/.test(trimmed) &&
+      !trimmed.endsWith('.') && !trimmed.endsWith(':')) {
+    langs.bash += 8; codeScore += 5;
+  }
+  if (/^\$\s+(node|python|npm|git|pip|bash|sh)/.test(trimmed)) {
+    langs.bash += 9; codeScore += 6;
+  }
+
+  // HTML
+  if (/^<\/?[a-zA-Z][\w-]*(?:\s+[^>]*)?>$/.test(trimmed) && !/^<(Math|Turn|SystemRules|startInteraction|EndInteraction|ActiveTarget|TurnEnd)/i.test(trimmed)) {
+    langs.html += 6; codeScore += 4;
+  }
+
+  // CSS
+  if (/^[.#a-zA-Z][\w\s.,#:>+~[\]="'-]*\{\s*$/.test(trimmed) || /^[a-z-]+\s*:\s*[^;]+;\s*$/.test(trimmed)) {
+    langs.css += 5; codeScore += 3;
+  }
+
+  // SQL
+  if (/^(SELECT|INSERT INTO|UPDATE|DELETE FROM|CREATE TABLE|ALTER TABLE|DROP TABLE)\b/i.test(trimmed)) {
+    langs.sql += 8; codeScore += 5;
+  }
+
+  // Generic Code Structural Indicators
+  const isIndented = /^( {2,}|\t+)\S/.test(line);
+  if (isIndented) codeScore += 2;
+  if (/[{}[\]();=<>|&+-]{2,}/.test(trimmed)) codeScore += 1.5;
+  if (/^[}\]);]+$/.test(trimmed)) codeScore += 4;
+
+  // Natural English prose penalty
+  const wordCount = trimmed.split(/\s+/).length;
+  const endsWithPeriod = /\.\s*$/.test(trimmed) && !/\.\.\.$/.test(trimmed) && !/['"`\])]$/.test(trimmed);
+  if (wordCount >= 7 && endsWithPeriod && !trimmed.startsWith('"') && !trimmed.startsWith("'")) {
+    codeScore -= 6;
+  }
+
+  return {
+    isEmpty: false,
+    isComment: false,
+    isProseHeader: false,
+    codeScore,
+    langs,
+    boundaryStart,
+    braceDelta,
+    parenDelta,
+    bracketDelta
+  };
+}
+
+function getDominantLang(langTotals) {
+  let bestLang = 'code';
+  let bestScore = 0;
+  for (const [lang, score] of Object.entries(langTotals)) {
+    if (score > bestScore) {
+      bestScore = score;
+      bestLang = lang;
+    }
+  }
+  return bestScore >= 3 ? bestLang : 'code';
+}
+
+function detectBlockTitle(lines, startLineIdx, lang, index) {
+  for (let i = startLineIdx - 1; i >= Math.max(0, startLineIdx - 5); i--) {
+    const t = lines[i].trim();
+    if (!t) continue;
+
+    const fileMatch = t.match(/\b([a-zA-Z0-9_-]+\.(js|py|sh|html|css|json|sql|ts|jsx|tsx|cpp|c|rs|go))\b/i);
+    if (fileMatch) {
+      return fileMatch[1];
+    }
+
+    const headingMatch = t.match(/^(?:\d+\.\s+|#+\s+)(.+)$/);
+    if (headingMatch) {
+      return headingMatch[1].replace(/[:]+$/, '').trim();
+    }
+  }
+  const ext = EXT_MAP[lang] || 'txt';
+  return `snippet_${index + 1}.${ext}`;
+}
+
+/**
+ * Checks if two adjacent blocks belong to the exact same continuous file/snippet
+ * (e.g., separated only by comment blocks, blank lines, or unclosed braces/parens,
+ * without any prose header or language switch in between).
+ */
+function canMergeAdjacentBlocks(prev, next, lines) {
+  if (next.hadHardBoundary) return false;
+  if (prev.language !== next.language) return false;
+  if (prev.language === 'bash' && next.language === 'bash') {
+    // Keep separate CLI command blocks if separated by empty lines unless commented together
+    // Actually if there was NO prose between them, keeping terminal commands unified is also clean!
+  }
+
+  // Inspect all lines strictly between prev.endLine and next.startLine
+  for (let i = prev.endLine + 1; i < next.startLine; i++) {
+    const t = lines[i].trim();
+    if (!t) continue; // blank line is fine
+    const isComment =
+      t.startsWith('//') ||
+      t.startsWith('#') ||
+      t.startsWith('/*') ||
+      t.startsWith('*') ||
+      t.endsWith('*/') ||
+      t.startsWith('"""') ||
+      t.startsWith("'''");
+    if (!isComment) {
+      // Actual non-comment text separated these two blocks -> keep separate!
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Smart Code Extractor with Attachment & Comment-Block Continuity
+ */
+function extractCodeBlocks(rawText) {
+  const normalized = rawText.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const lineInfos = lines.map((line) => analyzeLine(line));
+
+  // 1. Check for Markdown Fenced Blocks (```lang ... ```)
+  let inFence = false;
+  let fenceLang = '';
+  let fenceStart = -1;
+  const fencedRanges = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const fenceMatch = trimmed.match(/^```([a-zA-Z0-9_-]*)/);
+    if (fenceMatch) {
+      if (!inFence) {
+        inFence = true;
+        fenceLang = fenceMatch[1].toLowerCase();
+        fenceStart = i;
+      } else {
+        fencedRanges.push({ start: fenceStart, end: i, lang: fenceLang });
+        inFence = false;
+      }
+    }
+  }
+
+  if (fencedRanges.length > 0) {
+    const rawBlocks = fencedRanges.map((range, idx) => {
+      const codeLines = lines.slice(range.start + 1, range.end);
+      const langScores = { javascript: 0, python: 0, bash: 0, html: 0, css: 0, json: 0, sql: 0 };
+      for (let j = range.start + 1; j < range.end; j++) {
+        for (const k of Object.keys(langScores)) {
+          langScores[k] += lineInfos[j].langs[k] || 0;
+        }
+      }
+      const detected = range.lang || getDominantLang(langScores);
+      const langNorm = normalizeLangName(detected);
+      return {
+        startLine: range.start,
+        endLine: range.end,
+        language: langNorm,
+        title: detectBlockTitle(lines, range.start, langNorm, idx),
+        lines: codeLines,
+        hadHardBoundary: false
+      };
+    });
+
+    // Also merge fenced blocks if they were split purely by comment blocks of the same language
+    const mergedFenced = [];
+    for (const blk of rawBlocks) {
+      const prev = mergedFenced[mergedFenced.length - 1];
+      if (prev && canMergeAdjacentBlocks(prev, blk, lines)) {
+        const gapLines = lines.slice(prev.endLine + 1, blk.startLine);
+        prev.lines.push(...gapLines, ...blk.lines);
+        prev.endLine = blk.endLine;
+      } else {
+        mergedFenced.push(blk);
+      }
+    }
+
+    return mergedFenced.map((b) => ({
+      language: b.language,
+      title: b.title,
+      code: b.lines.join('\n').trim()
+    }));
+  }
+
+  // 2. Un-fenced Smart Segmentation with Multi-Line Comment State & Scope Tracking
+  const candidateBlocks = [];
+  let curBlock = null;
+  let pendingGapLines = []; // Buffers blank lines and comment blocks until next code line confirms continuity
+  let inBlockComment = false; // /* ... */ or <!-- ... -->
+  let pyDocstringQuote = null; // '"""' or "'''"
+
+  const flushBlock = () => {
+    if (!curBlock) return;
+    // Do NOT attach trailing gap lines that weren't followed by matching code
+    // unless they were trailing comments right after the last line with no blank line
+    const nonEmptyCount = curBlock.lines.filter((l) => l.trim() !== '').length;
+    if (nonEmptyCount >= 2 || (nonEmptyCount === 1 && curBlock.totalScore >= 5)) {
+      const lang = getDominantLang(curBlock.langScores);
+      candidateBlocks.push({
+        startLine: curBlock.startLine,
+        endLine: curBlock.endLine,
+        language: lang,
+        lines: curBlock.lines,
+        hadHardBoundary: curBlock.hadHardBoundary
+      });
+    }
+    curBlock = null;
+    pendingGapLines = [];
+    inBlockComment = false;
+    pyDocstringQuote = null;
+  };
+
+  const appendLineToCurrent = (lineIdx, line, info) => {
+    if (pendingGapLines.length > 0) {
+      for (const gap of pendingGapLines) {
+        curBlock.lines.push(gap.line);
+      }
+      pendingGapLines = [];
+    }
+    curBlock.lines.push(line);
+    curBlock.endLine = lineIdx;
+    curBlock.totalScore += Math.max(1, info ? info.codeScore : 2);
+    if (info) {
+      curBlock.braceDepth += info.braceDelta;
+      curBlock.parenDepth += info.parenDelta;
+      curBlock.bracketDepth += info.bracketDelta;
+      for (const k of Object.keys(curBlock.langScores)) {
+        curBlock.langScores[k] += info.langs[k] || 0;
+      }
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const info = lineInfos[i];
+
+    // --- State A: Inside multi-line C/JS block comment (/* ... */) or HTML comment (<!-- ... -->) ---
+    if (inBlockComment) {
+      if (curBlock) {
+        pendingGapLines.push({ lineIdx: i, line, isComment: true });
+      }
+      if (trimmed.includes('*/') || trimmed.includes('-->')) {
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    // --- State B: Inside multi-line Python docstring (""" ... """ or ''' ... ''') ---
+    if (pyDocstringQuote) {
+      if (curBlock) {
+        pendingGapLines.push({ lineIdx: i, line, isComment: true });
+        curBlock.langScores.python += 2;
+      }
+      if (trimmed.includes(pyDocstringQuote)) {
+        pyDocstringQuote = null;
+      }
+      continue;
+    }
+
+    // Check if this line OPENS a multi-line block comment or docstring
+    if ((trimmed.startsWith('/*') && !trimmed.includes('*/')) || (trimmed.startsWith('<!--') && !trimmed.includes('-->'))) {
+      inBlockComment = true;
+      if (!curBlock) {
+        curBlock = {
+          startLine: i,
+          endLine: i,
+          lines: [],
+          langScores: { javascript: 2, python: 0, bash: 0, html: 0, css: 0, json: 0, sql: 0 },
+          totalScore: 2,
+          braceDepth: 0,
+          parenDepth: 0,
+          bracketDepth: 0,
+          hadHardBoundary: false
+        };
+      }
+      pendingGapLines.push({ lineIdx: i, line, isComment: true });
+      continue;
+    }
+
+    if (trimmed.startsWith('"""') || trimmed.startsWith("'''")) {
+      const q = trimmed.startsWith('"""') ? '"""' : "'''";
+      const count = trimmed.split(q).length - 1;
+      if (count === 1) {
+        pyDocstringQuote = q;
+      }
+      if (curBlock) {
+        pendingGapLines.push({ lineIdx: i, line, isComment: true });
+        curBlock.langScores.python += 4;
+      }
+      continue;
+    }
+
+    // --- State C: Blank Line ---
+    if (info.isEmpty) {
+      if (curBlock) {
+        pendingGapLines.push({ lineIdx: i, line, isComment: false });
+      }
+      continue;
+    }
+
+    // --- State D: Single-line Comment (// ... or # ...) ---
+    if (info.isComment) {
+      if (!curBlock) {
+        // A comment block might be the top header of an upcoming code block
+        curBlock = {
+          startLine: i,
+          endLine: i,
+          lines: [line],
+          langScores: { ...info.langs },
+          totalScore: 2,
+          braceDepth: 0,
+          parenDepth: 0,
+          bracketDepth: 0,
+          hadHardBoundary: false
+        };
+      } else {
+        // Buffer comment inside pendingGapLines so if code follows, the whole comment block stays attached!
+        pendingGapLines.push({ lineIdx: i, line, isComment: true });
+        for (const k of Object.keys(curBlock.langScores)) {
+          curBlock.langScores[k] += info.langs[k] || 0;
+        }
+      }
+      continue;
+    }
+
+    // --- State E: Decide if current non-comment line continues `curBlock` or starts a new one ---
+    const isUnclosedScope =
+      curBlock && (curBlock.braceDepth > 0 || curBlock.parenDepth > 0 || curBlock.bracketDepth > 0);
+
+    const isIndentedContinuation =
+      curBlock && !info.isProseHeader && (/^( {2,}|\t+)/.test(line) || /^[}\])"'`\\]/.test(trimmed));
+
+    const isCodeLine = info.codeScore > 0 || isUnclosedScope || isIndentedContinuation;
+
+    if (isCodeLine) {
+      if (!curBlock) {
+        curBlock = {
+          startLine: i,
+          endLine: i,
+          lines: [],
+          langScores: { javascript: 0, python: 0, bash: 0, html: 0, css: 0, json: 0, sql: 0 },
+          totalScore: 0,
+          braceDepth: 0,
+          parenDepth: 0,
+          bracketDepth: 0,
+          hadHardBoundary: Boolean(info.boundaryStart)
+        };
+        appendLineToCurrent(i, line, info);
+      } else {
+        // Check if we must split here (e.g., new #!/usr/bin/env shebang, or sharp language switch after a gap)
+        const curDom = getDominantLang(curBlock.langScores);
+        const lineDom = getDominantLang(info.langs);
+        const hasBlankGap = pendingGapLines.some((g) => g.line.trim() === '');
+
+        const isSharpLangSwitch =
+          !isUnclosedScope &&
+          hasBlankGap &&
+          curDom !== 'code' &&
+          lineDom !== 'code' &&
+          curDom !== lineDom &&
+          info.langs[lineDom] >= 5;
+
+        if (info.boundaryStart || isSharpLangSwitch) {
+          // If there were leading comments in pendingGapLines that belong to the NEW block (like "# Self-test..." before "node train.js"),
+          // carry those trailing comments over to the new block!
+          const leadingCommentsForNext = [];
+          while (pendingGapLines.length > 0 && pendingGapLines[pendingGapLines.length - 1].isComment) {
+            leadingCommentsForNext.unshift(pendingGapLines.pop());
+          }
+
+          flushBlock();
+
+          const newStart = leadingCommentsForNext.length > 0 ? leadingCommentsForNext[0].lineIdx : i;
+          curBlock = {
+            startLine: newStart,
+            endLine: i,
+            lines: leadingCommentsForNext.map((c) => c.line),
+            langScores: { javascript: 0, python: 0, bash: 0, html: 0, css: 0, json: 0, sql: 0 },
+            totalScore: leadingCommentsForNext.length * 2,
+            braceDepth: 0,
+            parenDepth: 0,
+            bracketDepth: 0,
+            hadHardBoundary: Boolean(info.boundaryStart)
+          };
+          appendLineToCurrent(i, line, info);
+        } else {
+          // Attached directly or separated only by blank lines / comment blocks -> keep unified!
+          appendLineToCurrent(i, line, info);
+        }
+      }
+    } else {
+      // Genuine prose line encountered -> flush current code block
+      flushBlock();
+    }
+  }
+
+  flushBlock();
+
+  // 3. Post-Processing Pass: Re-attach any adjacent same-language blocks that were only separated by comments/whitespace
+  const finalBlocks = [];
+  for (const blk of candidateBlocks) {
+    const prev = finalBlocks[finalBlocks.length - 1];
+    if (prev && canMergeAdjacentBlocks(prev, blk, lines)) {
+      const gapLines = lines.slice(prev.endLine + 1, blk.startLine);
+      prev.lines.push(...gapLines, ...blk.lines);
+      prev.endLine = blk.endLine;
+    } else {
+      finalBlocks.push(blk);
+    }
+  }
+
+  return finalBlocks.map((b, idx) => ({
+    language: b.language,
+    title: detectBlockTitle(lines, b.startLine, b.language, idx),
+    code: b.lines.join('\n').trim()
+  }));
+}
+
+// ============================================================================
+// Lightweight Syntax Highlighter & UI Rendering
+// ============================================================================
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function highlightCode(code, lang) {
+  let escaped = escapeHtml(code);
+  const tokens = [];
+  const storeToken = (html) => {
+    const id = `\u0000TOK${tokens.length}\u0000`;
+    tokens.push(html);
+    return id;
+  };
+
+  if (lang === 'python' || lang === 'bash') {
+    escaped = escaped.replace(/(#[^\n]*)/g, (m) => storeToken(`<span class="tok-com">${m}</span>`));
+  } else if (lang === 'javascript' || lang === 'css') {
+    escaped = escaped.replace(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g, (m) => storeToken(`<span class="tok-com">${m}</span>`));
+  }
+
+  escaped = escaped.replace(/("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g, (m) =>
+    storeToken(`<span class="tok-str">${m}</span>`)
+  );
+
+  const kwList =
+    lang === 'python'
+      ? /\b(def|class|return|if|elif|else|for|while|in|import|from|as|with|try|except|finally|raise|pass|break|continue|lambda|yield|async|await|None|True|False|and|or|not|is)\b/g
+      : lang === 'bash'
+      ? /\b(node|python3|python|npm|npx|pip3|pip|git|docker|export|sudo|cd|mkdir|echo)\b/g
+      : /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|super|import|export|from|default|try|catch|finally|throw|async|await|typeof|instanceof|true|false|null|undefined)\b/g;
+
+  escaped = escaped.replace(kwList, '<span class="tok-kw">$1</span>');
+  escaped = escaped.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+  escaped = escaped.replace(/\u0000TOK(\d+)\u0000/g, (_, idx) => tokens[Number(idx)]);
+
+  return escaped;
+}
+
+function renderBlocks(blocks) {
+  const container = document.getElementById('blocksContainer');
+  const summary = document.getElementById('summaryText');
+
+  if (blocks.length === 0) {
+    summary.textContent = 'No code blocks detected.';
+    container.innerHTML = '<div class="empty-state">No distinct code blocks were detected in the provided text.</div>';
+    return;
+  }
+
+  const langCounts = {};
+  blocks.forEach((b) => {
+    langCounts[b.language] = (langCounts[b.language] || 0) + 1;
+  });
+  const breakdown = Object.entries(langCounts)
+    .map(([l, c]) => `${c} ${l.toUpperCase()}`)
+    .join(', ');
+  summary.textContent = `Extracted ${blocks.length} code block${blocks.length > 1 ? 's' : ''} (${breakdown})`;
+
+  container.innerHTML = '';
+
+  blocks.forEach((block) => {
+    const lineCount = block.code.split('\n').length;
+    const card = document.createElement('div');
+    card.className = 'code-card';
+
+    const langClass = `lang-${block.language}`;
+    const ext = EXT_MAP[block.language] || 'txt';
+    const downloadName = block.title.includes('.') ? block.title : `${block.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`;
+
+    card.innerHTML = `
+      <div class="code-header">
+        <div class="code-meta">
+          <span class="lang-badge ${langClass}">${escapeHtml(block.language)}</span>
+          <span class="file-title">${escapeHtml(block.title)}</span>
+          <span class="line-count">${lineCount} line${lineCount !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="code-actions">
+          <button class="copy-btn">Copy</button>
+          <button class="download-btn">Download</button>
+        </div>
+      </div>
+      <pre><code>${highlightCode(block.code, block.language)}</code></pre>
+    `;
+
+    const copyBtn = card.querySelector('.copy-btn');
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(block.code).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        copyBtn.style.borderColor = 'var(--success)';
+        copyBtn.style.color = 'var(--success)';
+        setTimeout(() => {
+          copyBtn.textContent = orig;
+          copyBtn.style.borderColor = '';
+          copyBtn.style.color = '';
+        }, 1500);
+      });
+    });
+
+    const downloadBtn = card.querySelector('.download-btn');
+    downloadBtn.addEventListener('click', () => {
+      const blob = new Blob([block.code], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadName;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    container.appendChild(card);
+  });
+}
+
+const inputEl = document.getElementById('inputText');
+const extractBtn = document.getElementById('extractBtn');
+const loadExampleBtn = document.getElementById('loadExampleBtn');
+const clearBtn = document.getElementById('clearBtn');
+
+extractBtn.addEventListener('click', () => {
+  renderBlocks(extractCodeBlocks(inputEl.value));
+});
+
+loadExampleBtn.addEventListener('click', () => {
+  inputEl.value = EXAMPLE_TEXT;
+  renderBlocks(extractCodeBlocks(inputEl.value));
+});
+
+clearBtn.addEventListener('click', () => {
+  inputEl.value = '';
+  document.getElementById('summaryText').textContent = 'Ready to extract code.';
+  document.getElementById('blocksContainer').innerHTML =
+    '<div class="empty-state">Paste text above and click <strong>Extract Code Blocks</strong>.</div>';
+});
+
+inputEl.addEventListener('paste', () => {
+  setTimeout(() => {
+    renderBlocks(extractCodeBlocks(inputEl.value));
+  }, 10);
+});
+</script>
+</body>
+</html>
